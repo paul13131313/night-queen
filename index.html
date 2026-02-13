@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+<title>NIGHT QUEEN</title>
+<meta name="description" content="夜の女王への成り上がりタップゲーム"/>
+<meta name="theme-color" content="#0d0d1a"/>
+<style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d1a;overflow-x:hidden;-webkit-tap-highlight-color:transparent}</style>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef, useMemo } = React;
+
+// ═══════════════════════════════════════════════════════════════
+// NIGHT QUEEN v5 — Retro Shojo Manga Style + Bug Fix
+// ═══════════════════════════════════════════════════════════════
+
+// ─── SOUND ────────────────────────────────────────────────────
+class Sfx {
+  constructor(){this.c=null;this.m=null;this.bg=null;this.off=false}
+  init(){if(this.c)return;this.c=new(window.AudioContext||window.webkitAudioContext)();this.m=this.c.createGain();this.m.gain.value=0.25;this.m.connect(this.c.destination)}
+  o(f,tp,d,v=0.1,dl=0){if(!this.c||this.off)return;try{const t=this.c.currentTime;const o=this.c.createOscillator();const g=this.c.createGain();o.type=tp;o.frequency.value=f;g.gain.setValueAtTime(0,t+dl);g.gain.linearRampToValueAtTime(v,t+dl+0.01);g.gain.exponentialRampToValueAtTime(0.001,t+dl+d);o.connect(g).connect(this.m);o.start(t+dl);o.stop(t+dl+d)}catch(e){}}
+  play(t,p={}){switch(t){
+    case"tap":this.o(800+(p.combo||0)*30,"sine",0.07,0.1);break;
+    case"combo":[300,500,700].forEach((f,i)=>this.o(f+(p.level||1)*80,"square",0.1,0.05,i*0.04));break;
+    case"coin":[1200,1600,2000].forEach((f,i)=>this.o(f,"sine",0.13,0.07,i*0.05));break;
+    case"ok":[523,659,784,1047].forEach((f,i)=>this.o(f,"sine",0.25,0.08,i*0.09));break;
+    case"ng":[300,250,200].forEach((f,i)=>this.o(f,"sawtooth",0.18,0.05,i*0.09));break;
+    case"up":[523,659,784,880,1047,1319,1568].forEach((f,i)=>this.o(f,i<4?"sine":"triangle",0.45,0.07,i*0.07));break;
+    case"rl":this.o(600+Math.random()*400,"sine",0.04,0.04);break;
+    case"buy":this.o(880,"sine",0.12,0.07);this.o(660,"sine",0.12,0.07,0.07);break;
+    case"pf":[523,659,784,1047,1319].forEach((f,i)=>this.o(f,"sine",0.35,0.08,i*0.06));break;
+    case"wr":this.o(200,"sawtooth",0.2,0.05);break;
+  }}
+  bgm(id){if(!this.c||this.off)return;this.stopBgm();try{const f=[55,65,73,82,55,65,73,82,55,65,73,82][id%12];const o1=this.c.createOscillator();const o2=this.c.createOscillator();const g=this.c.createGain();const fl=this.c.createBiquadFilter();o1.type="sine";o1.frequency.value=f;o2.type="sine";o2.frequency.value=f*1.5;fl.type="lowpass";fl.frequency.value=180;g.gain.value=0.03;o1.connect(fl).connect(g).connect(this.m);o2.connect(fl);o1.start();o2.start();this.bg={o1,o2}}catch(e){}}
+  stopBgm(){try{this.bg?.o1?.stop();this.bg?.o2?.stop()}catch(e){}this.bg=null}
+  toggle(){this.off=!this.off;if(this.off)this.stopBgm();return this.off}
+}
+const sfx=new Sfx();
+const fmt=(n)=>{if(n>=1e8)return`${(n/1e8).toFixed(1)}億`;if(n>=1e4)return`${Math.floor(n/1e4).toLocaleString()}万`;return n.toLocaleString()};
+
+// ─── DATA ─────────────────────────────────────────────────────
+// Reworded stats: 美貌→華(glamour) 話術→知性(intellect) 知名度→影響力(influence)
+const STAGES=[
+  {id:0,name:"場末のスナック",area:"地方・裏通り",earn:1500,rG:0,rI:0,rF:0,
+    emoji:"🍶",tap:"接客する",accent:"#c45c5c",
+    bg:"linear-gradient(180deg,#1a0808,#2d1212 50%,#0d0404)",
+    story:"地方の小さなスナック。カウンター8席、常連ばかり。\nママは元銀座のクラブホステス。\n「いい？笑顔と気遣い。それがこの世界の全てよ」\nあなたの物語が、ここから始まる。",
+    ptC:"#c45c5c",ptT:"b",
+    hair:"ponytail",hairColor:"#4a3020",outfit:"apron",outfitColor:"#8B4513",outfitAccent:"#D2B48C"},
+  {id:1,name:"地方キャバクラ",area:"地方都市・繁華街",earn:8000,rG:8,rI:5,rF:0,
+    emoji:"🥂",tap:"指名を取る",accent:"#8b5cf6",
+    bg:"linear-gradient(180deg,#08081f,#181035 50%,#04040f)",
+    story:"繁華街のキャバクラに移籍。日給2万円の世界。\n同期の「ミク」がライバル。指名数で毎月バトル。\n「この世界は実力主義。見た目も、トークも、全部」\n生き残るために、自分を磨く日々が始まった。",
+    rival:{name:"ミク",emoji:"💜"},ptC:"#8b5cf6",ptT:"b",
+    hair:"loose_curl",hairColor:"#3a2518",outfit:"mini_dress",outfitColor:"#6B21A8",outfitAccent:"#C084FC"},
+  {id:2,name:"銀座キャバクラ",area:"東京・銀座",earn:25000,rG:20,rI:14,rF:5,
+    emoji:"🍾",tap:"同伴に誘う",accent:"#a855f7",
+    bg:"linear-gradient(180deg,#0d081a,#1d1335 50%,#080410)",
+    story:"ついに銀座進出。客層が一変する。\n「銀座は教養の街よ。新聞は毎日3紙読みなさい」\n同伴、アフター、ボトルバック──\n夜の世界のビジネスを本格的に学ぶ。",
+    ptC:"#a855f7",ptT:"s",
+    hair:"elegant_wave",hairColor:"#2a1a10",outfit:"cocktail_dress",outfitColor:"#7C3AED",outfitAccent:"#DDD6FE"},
+  {id:3,name:"銀座高級クラブ",area:"東京・銀座一丁目",earn:60000,rG:35,rI:25,rF:12,
+    emoji:"🥃",tap:"席につく",accent:"#d4a017",
+    bg:"linear-gradient(180deg,#0a0800,#1a180a 50%,#050400)",
+    story:"銀座一丁目「クラブ・ロワイヤル」。\nヘルプとして修行を積み、ようやく正式なホステスに。\n客は政治家、財界人。一つの会話に万札が飛ぶ世界。\nNo.1「レイナ」の背中は、まだ遠い。",
+    rival:{name:"レイナ",emoji:"👑"},ptC:"#d4a017",ptT:"s",
+    hair:"chignon",hairColor:"#1a0f08",outfit:"evening_gown",outfitColor:"#92400E",outfitAccent:"#FDE68A"},
+  {id:4,name:"SNSインフルエンサー",area:"東京・表参道",earn:120000,rG:48,rI:35,rF:22,
+    emoji:"📸",tap:"投稿する",accent:"#ec4899",
+    bg:"linear-gradient(180deg,#1a0810,#2d1020 50%,#0d0408)",
+    story:"夜の世界で磨いた「華」をSNSで発信。\nフォロワー100万突破。企業案件が殺到する。\n「私の過去？全部ネタにしてやるわ」\n隠すのではなく、武器にする。それが新しい時代。",
+    ptC:"#ec4899",ptT:"s",
+    hair:"long_straight",hairColor:"#1a0a05",outfit:"trendy",outfitColor:"#DB2777",outfitAccent:"#FBCFE8"},
+  {id:5,name:"情報番組コメンテーター",area:"テレビ局",earn:300000,rG:58,rI:48,rF:35,
+    emoji:"🎤",tap:"コメントする",accent:"#38bdf8",
+    bg:"linear-gradient(180deg,#081015,#122535 50%,#04080f)",
+    story:"SNSでの発信力を買われ、情報番組のレギュラーに。\n「元・夜の世界出身」を公言するコメンテーターとして\n独自のポジションを確立。\n「現場を知ってるから言えることがある」",
+    ptC:"#38bdf8",ptT:"b",
+    hair:"bob",hairColor:"#15100a",outfit:"blazer",outfitColor:"#0369A1",outfitAccent:"#BAE6FD"},
+  {id:6,name:"キー局キャスター",area:"東京・六本木",earn:700000,rG:68,rI:60,rF:50,
+    emoji:"📺",tap:"生放送",accent:"#3b82f6",
+    bg:"linear-gradient(180deg,#040810,#081835 50%,#020408)",
+    story:"キー局の夜のニュース番組に抜擢。\n全国に顔が知られ、影響力は絶大。\n「経歴詐称」と書く週刊誌もあるが、\n「詐称なんかしてません。全部本当のことです」\nと笑い飛ばす強さを、あなたは持っている。",
+    rival:{name:"週刊誌記者",emoji:"📰"},ptC:"#3b82f6",ptT:"s",
+    hair:"side_part",hairColor:"#0f0a05",outfit:"anchor_suit",outfitColor:"#1D4ED8",outfitAccent:"#BFDBFE"},
+  {id:7,name:"メディア起業家",area:"東京・港区",earn:2000000,rG:78,rI:72,rF:65,
+    emoji:"💫",tap:"事業を動かす",accent:"#f59e0b",
+    bg:"linear-gradient(180deg,#0f0800,#251805 50%,#0a0400)",
+    story:"独立してメディア企業を設立。年商30億。\n「女性の生き方に正解はない」をテーマに発信。\n政財界との繋がりも太くなり、ある提案を受ける。\n「あなたの発信力を、政治に活かしませんか？」",
+    ptC:"#f59e0b",ptT:"s",
+    hair:"glamour_wave",hairColor:"#0d0805",outfit:"power_dress",outfitColor:"#B45309",outfitAccent:"#FDE68A"},
+  {id:8,name:"区議会議員",area:"東京・港区議会",earn:5000000,rG:85,rI:80,rF:75,
+    emoji:"🏛️",tap:"政策を訴える",accent:"#22c55e",
+    bg:"linear-gradient(180deg,#080f08,#122512 50%,#040804)",
+    story:"港区議会に初当選。ぶっちぎりのトップ当選。\n「夜の世界で見てきた現実がある。\n貧困、教育、女性の選択肢──\n綺麗事じゃなく、本気で変えたい」\nあなたの言葉は、確かに届き始めている。",
+    ptC:"#22c55e",ptT:"b",
+    hair:"professional_up",hairColor:"#0a0805",outfit:"formal_suit",outfitColor:"#166534",outfitAccent:"#BBF7D0"},
+  {id:9,name:"衆議院議員",area:"東京・永田町",earn:12000000,rG:90,rI:88,rF:85,
+    emoji:"⚖️",tap:"法案を通す",accent:"#6366f1",
+    bg:"linear-gradient(180deg,#080810,#12122a 50%,#040408)",
+    story:"衆議院選挙に立候補。「型破りな候補者」として注目。\n古参議員たちの壁は厚いが、SNS世代の支持は圧倒的。\n「この国に必要なのは、現場を知っているリーダーだ」\n永田町の常識を、ひっくり返す。",
+    rival:{name:"派閥の長",emoji:"🧓"},ptC:"#6366f1",ptT:"s",
+    hair:"elegant_short",hairColor:"#08060a",outfit:"diet_suit",outfitColor:"#4338CA",outfitAccent:"#C7D2FE"},
+  {id:10,name:"党代表",area:"永田町・党本部",earn:30000000,rG:95,rI:94,rF:92,
+    emoji:"🗼",tap:"党を率いる",accent:"#f97316",
+    bg:"linear-gradient(180deg,#100805,#2a180a 50%,#080402)",
+    story:"党代表選に勝利。野党第一党の顔として、\n国民的知名度は頂点に。\n「場末のスナックからここまで来た女」\nメディアは面白おかしく書くが、あなたは気にしない。\n見据えているのは、ただひとつの椅子。",
+    ptC:"#f97316",ptT:"s",
+    hair:"power_bob",hairColor:"#060505",outfit:"leader_suit",outfitColor:"#C2410C",outfitAccent:"#FED7AA"},
+  {id:11,name:"内閣総理大臣",area:"首相官邸",earn:100000000,rG:100,rI:100,rF:100,
+    emoji:"👑",tap:"日本を動かす",accent:"#fbbf24",
+    bg:"linear-gradient(180deg,#1a0800,#3a1805 30%,#1a0800 70%,#0d0200)",
+    story:"第○○代 内閣総理大臣──\n\n場末のスナックで「笑顔が全て」と教わった夜。\n銀座で「教養が武器」だと知った夜。\nテレビで「言葉の力」を学んだ夜。\n\n全ての夜が、あなたをここに連れてきた。\n\n「全ての夜に、光あれ。」\n\n── あなたは NIGHT QUEEN になった。",
+    ptC:"#fbbf24",ptT:"s",
+    hair:"crown_updo",hairColor:"#050405",outfit:"pm_formal",outfitColor:"#92400E",outfitAccent:"#FBBF24"},
+];
+
+const SURGERIES=[
+  {id:"s01",name:"二重まぶた（埋没法）",cost:30000,g:5,i:2,f:0,risk:3,tier:1,emoji:"👁️",desc:"切らずにぱっちり二重",part:"eyes"},
+  {id:"s02",name:"ヒアルロン酸（唇）",cost:50000,g:4,i:2,f:0,risk:3,tier:1,emoji:"💋",desc:"ぷるっと魅惑の唇",part:"lips"},
+  {id:"s03",name:"ボトックス（額）",cost:45000,g:4,i:1,f:0,risk:2,tier:1,emoji:"💉",desc:"シワ消しで若返り",part:"skin"},
+  {id:"s04",name:"美白レーザー",cost:60000,g:5,i:0,f:1,risk:1,tier:1,emoji:"✨",desc:"透明感のある美白肌",part:"skin"},
+  {id:"s05",name:"鼻プロテーゼ",cost:350000,g:8,i:2,f:2,risk:8,tier:2,emoji:"👃",desc:"すっと通った鼻筋",part:"nose"},
+  {id:"s06",name:"脂肪吸引",cost:500000,g:6,i:2,f:1,risk:9,tier:2,emoji:"🩺",desc:"ほっそりボディライン",part:"body"},
+  {id:"s07",name:"糸リフト",cost:400000,g:7,i:2,f:1,risk:6,tier:2,emoji:"🧵",desc:"フェイスラインUP",part:"jaw"},
+  {id:"s08",name:"歯列矯正＋ホワイトニング",cost:900000,g:5,i:6,f:2,risk:1,tier:2,emoji:"🦷",desc:"完璧な白い歯並び",part:"teeth"},
+  {id:"s09",name:"目頭・目尻切開",cost:700000,g:10,i:3,f:3,risk:12,tier:3,emoji:"🔪",desc:"大きく印象的な瞳",part:"eyes"},
+  {id:"s10",name:"エラ・顎削り",cost:1800000,g:12,i:3,f:4,risk:14,tier:3,emoji:"💀",desc:"究極の小顔整形",part:"jaw"},
+  {id:"s11",name:"豊胸（シリコン）",cost:2500000,g:10,i:3,f:4,risk:13,tier:3,emoji:"🏥",desc:"理想のプロポーション",part:"chest"},
+  {id:"s12",name:"フェイスリフト",cost:6000000,g:14,i:4,f:6,risk:15,tier:4,emoji:"🌟",desc:"10歳若返る禁断の術",part:"skin"},
+  {id:"s13",name:"渡韓フルリメイク",cost:12000000,g:18,i:5,f:8,risk:17,tier:4,emoji:"🇰🇷",desc:"別人級の大改造",part:"full"},
+  {id:"s14",name:"セレブ全身コース",cost:35000000,g:22,i:6,f:10,risk:18,tier:4,emoji:"💎",desc:"至高の華へ",part:"full"},
+];
+
+const SKILLS=[
+  {id:"k1",name:"話術レッスン",cost:25000,i:6,f:2,emoji:"💬",desc:"会話の基礎"},
+  {id:"k2",name:"マナー教室",cost:60000,i:7,f:3,emoji:"🎀",desc:"上品な所作"},
+  {id:"k3",name:"ボイストレーニング",cost:100000,i:8,f:4,emoji:"🎵",desc:"声の魅力"},
+  {id:"k4",name:"英会話スクール",cost:150000,i:9,f:6,emoji:"🌍",desc:"国際的教養"},
+  {id:"k5",name:"SNSブランディング",cost:200000,i:5,f:16,emoji:"📱",desc:"発信力"},
+  {id:"k6",name:"メディアトレーニング",cost:400000,i:9,f:13,emoji:"📡",desc:"メディア対応力"},
+  {id:"k7",name:"政治塾",cost:800000,i:12,f:10,emoji:"📚",desc:"政策立案力"},
+  {id:"k8",name:"MBA取得",cost:2000000,i:10,f:6,emoji:"🎓",desc:"経営知識"},
+];
+
+const EVENTS=[
+  {text:"VIP客が来店！チップ大量！",mult:3,type:"good"},
+  {text:"指名が入った！ボーナス！",mult:2.5,type:"good"},
+  {text:"同伴ディナーで高級フレンチ！",mult:2,type:"good"},
+  {text:"嫉妬した同僚に陰口を叩かれた…",mult:0.5,type:"bad"},
+  {text:"酔客に絡まれて消耗…",mult:0.3,type:"bad"},
+  {text:"体調不良で早退…",mult:0.2,type:"bad"},
+  {text:"SNSがバズった！",mult:2,type:"fame",fB:3},
+  {text:"雑誌の取材が来た！",mult:1.5,type:"fame",fB:2},
+  {text:"テレビ出演オファー！",mult:2,type:"fame",fB:4},
+];
+
+const CONVOS=[
+  {stages:[0,1,2],diff:"E",timer:100,sit:"酔ったお客様が絡んできた",ch:[{t:"「もう〜、可愛いんだから♡」",s:1.5},{t:"「うざいんですけど」",s:0.2},{t:"「ママ〜助けて」",s:0.5}],best:0},
+  {stages:[0,1,2],diff:"E",timer:100,sit:"「君、何歳？」と聞かれた",ch:[{t:"「いくつに見えます？♡」",s:1.5},{t:"「秘密♡」と耳元で",s:1.8},{t:"「個人情報です」",s:0.3}],best:1},
+  {stages:[0,1,2],diff:"E",timer:100,sit:"「彼氏いるの？」と聞かれた",ch:[{t:"「今夜はあなただけ♡」",s:1.8},{t:"「いません」と素直に",s:1.0},{t:"「それセクハラですよ」",s:0.2}],best:0},
+  {stages:[0,1],diff:"E",timer:100,sit:"カラオケを振られた。歌に自信がない",ch:[{t:"「一緒にデュエットしましょ♡」",s:1.8},{t:"下手でも笑顔で堂々と",s:1.5},{t:"「歌えません」と断る",s:0.4}],best:0},
+  {stages:[1,2],diff:"E",timer:90,sit:"隣のテーブルの客がこちらを気にしている",ch:[{t:"目が合ったら微笑みかける",s:1.3},{t:"「あちらにもお酌を♡」と提案",s:1.8},{t:"気づかないふりをする",s:0.5}],best:1},
+  {stages:[2,3],diff:"M",timer:80,sit:"常連のお客様が「今夜は気分が乗らない」",ch:[{t:"無理に盛り上げず寄り添う",s:2.0},{t:"「じゃあ飲みましょ！」とテンション上げ",s:0.8},{t:"「お疲れの時こそ、いいお酒を」",s:1.5}],best:0},
+  {stages:[3,4],diff:"M",timer:75,sit:"ライバルがあなたの客を奪おうとしている",ch:[{t:"動じず、自分の客に集中する",s:1.5},{t:"「やめて」と直接言う",s:0.3},{t:"さりげなく自分の強みで差別化",s:2.2},{t:"ママに相談する",s:0.8}],best:2},
+  {stages:[3,4,5],diff:"M",timer:70,sit:"経営者が「うちの会社に来ない？」",ch:[{t:"「素敵な提案。でも今はここが天職♡」",s:2.0},{t:"「年収は？」と聞く",s:0.2},{t:"名刺交換だけして可能性を残す",s:1.5}],best:0},
+  {stages:[4,5],diff:"M",timer:70,sit:"SNSで炎上した。匿名の誹謗中傷の嵐",ch:[{t:"無視して平常運転",s:1.3},{t:"反論ツイートする",s:0.2},{t:"前向きな投稿で空気を変える",s:2.2}],best:2},
+  {stages:[5,6],diff:"M",timer:65,sit:"生放送中にカメラの前でミスをした",ch:[{t:"笑顔で「失礼しました♡」と自然にリカバー",s:1.8},{t:"動揺して黙る",s:0.1},{t:"アドリブでジョークに変える",s:2.5}],best:2},
+  {stages:[5,6],diff:"M",timer:65,sit:"共演者が明らかに間違った情報を発言",ch:[{t:"「補足しますと…」とやんわり訂正",s:2.3},{t:"「間違ってますよ」と指摘",s:0.5},{t:"流す",s:0.8}],best:0},
+  {stages:[3,4,5],diff:"M",timer:70,sit:"高額プレゼントを渡された",ch:[{t:"「嬉しい！でもお気持ちだけで♡」",s:2.0},{t:"すぐ受け取る",s:0.8},{t:"「お店のルールがあるので…」",s:1.5}],best:0},
+  {stages:[6,7],diff:"H",timer:55,sit:"週刊誌に過去を報じられた",ch:[{t:"「全て私の経験です」と正面から",s:2.5},{t:"「ノーコメント」",s:0.4},{t:"「その経験が今の私を作った」と堂々と",s:3.0},{t:"弁護士を通じて対応",s:1.0}],best:2},
+  {stages:[6,7],diff:"H",timer:50,sit:"生放送中、未確認の速報が入った",ch:[{t:"「速報です。未確認情報です」と前置き",s:3.0},{t:"確認取れるまで伝えない",s:1.5},{t:"そのまま読み上げる",s:0.2}],best:0},
+  {stages:[7,8],diff:"H",timer:50,sit:"大口スポンサーが「この話題は報じるな」",ch:[{t:"「報道の独立性は守ります」",s:3.0},{t:"従う",s:0.1},{t:"「報じ方は配慮するが事実は伝える」",s:2.5}],best:0},
+  {stages:[8,9,10,11],diff:"H",timer:50,sit:"「元夜職に政治ができるのか」と追及",ch:[{t:"「現場を知ってるから国民の声が聞こえる」",s:3.0},{t:"感情的に反論",s:0.1},{t:"データで冷静に反論",s:2.5},{t:"「職業差別ではありませんか」",s:2.8}],best:0},
+  {stages:[9,10,11],diff:"H",timer:45,sit:"支持率が急落。記者会見",ch:[{t:"「結果で示す」と改革案を発表",s:3.0},{t:"「メディアが悪い」",s:0.1},{t:"具体的数字で成果を説明",s:2.5}],best:0},
+  {stages:[9,10,11],diff:"H",timer:40,sit:"党の重鎮から「引退しろ」と圧力",ch:[{t:"「ご指導に感謝。でも民意に従います」",s:3.0},{t:"「わかりました」",s:0.1},{t:"「時代は変わった」と啖呵",s:2.0},{t:"裏で根回しして味方を増やす",s:2.5}],best:0},
+  {stages:[10,11],diff:"H",timer:35,sit:"大災害発生。トップとしての第一声",ch:[{t:"即座に対策本部設置、現地視察を指示",s:3.5},{t:"まず状況確認",s:1.5},{t:"SNSで呼びかけ",s:1.0},{t:"記者会見で「必ず助ける」",s:2.0}],best:0},
+  {stages:[10,11],diff:"H",timer:35,sit:"閣僚のスキャンダル。任命責任",ch:[{t:"「任命責任は私にある。即刻更迭」",s:3.5},{t:"「本人の問題」",s:0.1},{t:"「調査中につきコメント控える」",s:0.8}],best:0},
+  {stages:[0,1,2,3],diff:"E",timer:90,sit:"閉店間際、「もう一杯だけ」",ch:[{t:"「特別に♡ でも最後ね」",s:1.5},{t:"「閉店です」と断る",s:0.5},{t:"笑顔で応じて延長料金をさりげなく",s:2.0}],best:2},
+  {stages:[4,5,6,7],diff:"M",timer:60,sit:"2人の出演者が収録中に口論",ch:[{t:"「お二人とも素敵な意見！視聴者も迷いますね♡」",s:2.2},{t:"見て見ぬふり",s:0.3},{t:"冷静に論点を整理して仲裁",s:2.5}],best:2},
+];
+
+// ═══════════════════════════════════════════════════════════════
+// ANIME STYLE CHARACTER — Full body, color fills
+// ═══════════════════════════════════════════════════════════════
+const Character = ({stageData, done, glamour}) => {
+  const s = stageData;
+  const has = (id) => done.has(id);
+  // Surgery effects
+  const bigE = has("s01")||has("s09"), hugeE = has("s09"), lush = has("s02");
+  const slimN = has("s05"), slimJ = has("s07")||has("s10"), tinyJ = has("s10");
+  const glow = has("s04")||has("s12")||has("s14"), full = has("s13")||has("s14");
+  const teeth = has("s08"), lifted = has("s12");
+  const eS = hugeE ? 1.2 : bigE ? 1.1 : 1;
+  const jw = tinyJ ? 14.5 : slimJ ? 15.5 : 17;
+
+  const ac = s.accent || "#fbbf24";
+  // Colors
+  const skin = glow ? "#fce8d8" : "#f5dcc8";
+  const skinS = glow ? "#f0d4c0" : "#e8c8b0";
+  const hc = "#dbb050"; // blonde base
+  const hcS = "#c89830"; // blonde shadow
+  const hcH = "#f0d878"; // blonde highlight
+  const eyeC = "#c03030"; // red-brown iris
+  const blush = "#f0a0a0";
+  const oc = s.id >= 3 ? "#1a1a2e" : (s.id >= 2 ? "#2a1540" : "#222"); // outfit dark
+  const ocH = s.id >= 3 ? "#2a2a44" : "#3a2555"; // outfit highlight
+
+  const renderHairBack = () => {
+    switch(s.hair) {
+      case "ponytail": return (<g>
+        <path d="M27,18 Q27,6 50,4 Q73,6 73,18 L73,28 L27,28Z" fill={hc}/>
+        <path d="M40,18 Q44,10 50,8 Q56,10 58,16" fill={hcH} opacity="0.4"/>
+        {/* Ponytail */}
+        <path d="M62,14 Q78,18 75,40 Q72,58 66,72 Q64,66 68,48 Q70,30 60,18" fill={hc}/>
+        <path d="M64,20 Q72,24 70,40 Q68,52 64,62" fill={hcH} opacity="0.3"/>
+        <path d="M62,14 Q78,18 75,40 Q72,58 66,72" fill="none" stroke={hcS} strokeWidth="0.8" opacity="0.5"/>
+        <circle cx="63" cy="16" r="3" fill={ac} opacity="0.8"/>
+        <circle cx="63" cy="16" r="3" fill="none" stroke={hcS} strokeWidth="0.5"/>
+      </g>);
+      case "loose_curl": return (<g>
+        <path d="M25,18 Q25,4 50,2 Q75,4 75,18 L75,28 L25,28Z" fill={hc}/>
+        <path d="M38,16 Q44,8 52,6" fill={hcH} opacity="0.4"/>
+        <path d="M25,26 Q20,48 22,70 Q24,82 28,88" fill={hc}/>
+        <path d="M75,26 Q80,48 78,70 Q76,82 72,88" fill={hc}/>
+        <path d="M27,30 Q22,50 25,68" fill={hcH} opacity="0.3"/>
+        <path d="M73,30 Q78,50 75,68" fill={hcH} opacity="0.3"/>
+        <path d="M25,26 Q20,48 22,70 Q24,82 28,88" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+        <path d="M75,26 Q80,48 78,70 Q76,82 72,88" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+      </g>);
+      case "elegant_wave": return (<g>
+        <path d="M25,18 Q25,4 50,2 Q75,4 75,18 L75,28 L25,28Z" fill={hc}/>
+        <path d="M38,16 Q44,8 52,6" fill={hcH} opacity="0.4"/>
+        <path d="M25,26 Q18,42 22,56 Q26,68 22,78" fill={hc}/>
+        <path d="M75,26 Q82,42 78,56 Q74,68 78,78" fill={hc}/>
+        <path d="M27,30 Q22,44 24,54" fill={hcH} opacity="0.3"/>
+        <path d="M25,26 Q18,42 22,56 Q26,68 22,78" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+        <path d="M75,26 Q82,42 78,56 Q74,68 78,78" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+      </g>);
+      case "chignon": return (<g>
+        <path d="M28,18 Q28,6 50,4 Q72,6 72,18 L72,28 L28,28Z" fill={hc}/>
+        <path d="M40,16 Q46,8 52,6" fill={hcH} opacity="0.4"/>
+        <ellipse cx="50" cy="6" rx="10" ry="8" fill={hc}/>
+        <ellipse cx="50" cy="6" rx="10" ry="8" fill="none" stroke={hcS} strokeWidth="0.6"/>
+        <path d="M42,8 Q46,2 54,2 Q58,4 56,8" fill={hcH} opacity="0.3"/>
+        <path d="M28,26 Q26,32 30,36" fill={hc}/>
+        <path d="M72,26 Q74,32 70,36" fill={hc}/>
+        <circle cx="56" cy="4" r="2.5" fill={ac} opacity="0.7"/>
+      </g>);
+      case "long_straight": return (<g>
+        <path d="M25,18 Q25,4 50,2 Q75,4 75,18 L75,28 L25,28Z" fill={hc}/>
+        <path d="M40,16 Q46,8 54,6" fill={hcH} opacity="0.5"/>
+        <rect x="23" y="26" width="6" height="64" rx="2" fill={hc}/>
+        <rect x="71" y="26" width="6" height="64" rx="2" fill={hc}/>
+        <rect x="25" y="28" width="2" height="56" fill={hcH} opacity="0.25"/>
+        <rect x="73" y="28" width="2" height="56" fill={hcH} opacity="0.25"/>
+        <path d="M23,26 L23,90" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+        <path d="M77,26 L77,90" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+      </g>);
+      case "bob": return (<g>
+        <path d="M26,18 Q26,4 50,2 Q74,4 74,18 L74,28 L26,28Z" fill={hc}/>
+        <path d="M38,16 Q44,8 52,6" fill={hcH} opacity="0.4"/>
+        <path d="M26,26 Q24,38 28,46" fill={hc}/>
+        <path d="M74,26 Q76,38 72,46" fill={hc}/>
+        <path d="M28,28 Q26,36 29,42" fill={hcH} opacity="0.25"/>
+        <path d="M26,26 Q24,38 28,46" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+        <path d="M74,26 Q76,38 72,46" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+      </g>);
+      case "side_part": return (<g>
+        <path d="M26,18 Q30,4 56,2 Q74,4 74,18 L74,28 L26,28Z" fill={hc}/>
+        <path d="M42,14 Q50,6 58,6" fill={hcH} opacity="0.4"/>
+        <path d="M26,26 Q24,40 28,50" fill={hc}/>
+        <path d="M74,26 Q76,40 72,50" fill={hc}/>
+        <path d="M26,26 Q24,40 28,50" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+        <path d="M74,26 Q76,40 72,50" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+      </g>);
+      case "glamour_wave": return (<g>
+        <path d="M22,18 Q22,2 50,0 Q78,2 78,18 L78,28 L22,28Z" fill={hc}/>
+        <path d="M36,14 Q44,4 54,4" fill={hcH} opacity="0.5"/>
+        <path d="M22,26 Q14,44 18,60 Q22,74 18,86 Q16,92 18,96" fill={hc}/>
+        <path d="M78,26 Q86,44 82,60 Q78,74 82,86 Q84,92 82,96" fill={hc}/>
+        <path d="M24,30 Q18,46 20,58" fill={hcH} opacity="0.3"/>
+        <path d="M76,30 Q82,46 80,58" fill={hcH} opacity="0.3"/>
+        <path d="M22,26 Q14,44 18,60 Q22,74 18,86" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+        <path d="M78,26 Q86,44 82,60 Q78,74 82,86" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.5"/>
+      </g>);
+      case "professional_up": return (<g>
+        <path d="M28,18 Q28,6 50,4 Q72,6 72,18 L72,28 L28,28Z" fill={hc}/>
+        <path d="M40,16 Q46,8 52,6" fill={hcH} opacity="0.4"/>
+        <ellipse cx="50" cy="4" rx="12" ry="9" fill={hc}/>
+        <ellipse cx="50" cy="4" rx="12" ry="9" fill="none" stroke={hcS} strokeWidth="0.6"/>
+        <path d="M42,6 Q48,0 56,0 Q60,2 58,6" fill={hcH} opacity="0.3"/>
+        <path d="M28,26 Q28,30 32,34" fill={hc}/>
+        <path d="M72,26 Q72,30 68,34" fill={hc}/>
+      </g>);
+      case "elegant_short": return (<g>
+        <path d="M28,18 Q28,8 50,6 Q72,8 72,18 L72,28 L28,28Z" fill={hc}/>
+        <path d="M40,16 Q46,10 54,8" fill={hcH} opacity="0.4"/>
+        <path d="M28,26 Q26,34 30,38" fill={hc}/>
+        <path d="M72,26 Q74,34 70,38" fill={hc}/>
+      </g>);
+      case "power_bob": return (<g>
+        <path d="M26,18 Q26,4 50,2 Q74,4 74,18 L74,28 L26,28Z" fill={hc}/>
+        <path d="M38,16 Q44,8 52,6" fill={hcH} opacity="0.4"/>
+        <path d="M26,26 Q24,38 27,48" fill={hc}/>
+        <path d="M74,26 Q76,38 73,48" fill={hc}/>
+        <path d="M28,28 Q26,38 28,44" fill={hcH} opacity="0.25"/>
+        <path d="M26,26 Q24,38 27,48" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+        <path d="M74,26 Q76,38 73,48" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.4"/>
+      </g>);
+      case "crown_updo": return (<g>
+        <path d="M28,18 Q28,6 50,4 Q72,6 72,18 L72,28 L28,28Z" fill={hc}/>
+        <path d="M40,16 Q46,8 52,6" fill={hcH} opacity="0.4"/>
+        <ellipse cx="50" cy="2" rx="14" ry="11" fill={hc}/>
+        <path d="M40,4 Q46,-4 54,-4 Q60,-2 58,4" fill={hcH} opacity="0.3"/>
+        <ellipse cx="50" cy="2" rx="14" ry="11" fill="none" stroke={hcS} strokeWidth="0.6"/>
+        {/* Tiara */}
+        <path d="M39,-2 L42,-8 L45,-3 L50,-10 L55,-3 L58,-8 L61,-2" fill="none" stroke="#d4a030" strokeWidth="1.5" strokeLinejoin="round"/>
+        <circle cx="50" cy="-9" r="1.5" fill="#d4a030"/>
+        <circle cx="42" cy="-7" r="1" fill="#d4a030"/>
+        <circle cx="58" cy="-7" r="1" fill="#d4a030"/>
+        <path d="M28,26 Q28,30 32,34" fill={hc}/>
+        <path d="M72,26 Q72,30 68,34" fill={hc}/>
+      </g>);
+      default: return <path d="M28,18 Q28,6 50,4 Q72,6 72,18 L72,28 L28,28Z" fill={hc}/>;
+    }
+  };
+
+  const renderBangs = () => {
+    if (s.hair === "side_part") {
+      return (<g>
+        <path d="M30,20 Q40,8 58,6 Q72,8 74,20 Q66,14 54,12 Q40,14 32,18Z" fill={hc}/>
+        <path d="M44,14 Q52,8 58,8" fill={hcH} opacity="0.5"/>
+        <path d="M30,20 Q40,8 58,6 Q72,8 74,20" fill="none" stroke={hcS} strokeWidth="0.6" opacity="0.4"/>
+      </g>);
+    }
+    if (["chignon","professional_up","crown_updo","elegant_short"].includes(s.hair)) {
+      return (<g>
+        <path d="M30,20 Q38,10 50,8 Q62,10 70,20 Q64,16 50,14 Q36,16 30,20Z" fill={hc}/>
+        <path d="M42,16 Q48,12 54,12" fill={hcH} opacity="0.4"/>
+      </g>);
+    }
+    return (<g>
+      <path d="M28,22 Q34,8 50,4 Q66,8 72,22 Q66,14 56,10 Q44,10 34,16Z" fill={hc}/>
+      <path d="M40,14 Q48,6 56,8" fill={hcH} opacity="0.5"/>
+      <path d="M28,22 Q34,8 50,4 Q66,8 72,22" fill="none" stroke={hcS} strokeWidth="0.5" opacity="0.3"/>
+    </g>);
+  };
+
+  const renderOutfit = () => {
+    if (s.id <= 1) {
+      return (<g>
+        {/* Simple top + skirt */}
+        <path d="M38,52 Q36,54 34,58 L32,72 Q50,76 68,72 L66,58 Q64,54 62,52" fill={oc}/>
+        {/* Skirt flare */}
+        <path d="M32,72 Q28,84 26,96 L74,96 Q72,84 68,72" fill={oc}/>
+        <path d="M36,76 L34,92" fill="none" stroke={ocH} strokeWidth="0.6" opacity="0.4"/>
+        <path d="M64,76 L66,92" fill="none" stroke={ocH} strokeWidth="0.6" opacity="0.4"/>
+        <path d="M50,72 L50,94" fill="none" stroke={ocH} strokeWidth="0.4" opacity="0.3"/>
+        {/* Neckline */}
+        <path d="M38,52 Q50,56 62,52" fill={skin} stroke={oc} strokeWidth="0.8"/>
+        {s.id===0 && <g>
+          <path d="M38,66 L62,66 L60,72 Q50,74 40,72Z" fill="#f5f0e0" opacity="0.6"/>
+          <path d="M38,66 L62,66" fill="none" stroke={hcS} strokeWidth="0.4"/>
+        </g>}
+      </g>);
+    }
+    if (s.id <= 3) {
+      return (<g>
+        {/* Fitted dress */}
+        <path d="M36,52 Q34,56 32,62 L30,78 Q28,88 24,100 L76,100 Q72,88 70,78 L68,62 Q66,56 64,52" fill={oc}/>
+        {/* Neckline V */}
+        <path d="M36,52 L50,60 L64,52" fill={skin}/>
+        <path d="M36,52 L50,60 L64,52" fill="none" stroke={oc} strokeWidth="0.6"/>
+        {/* Waist */}
+        <path d="M34,70 Q50,68 66,70" fill="none" stroke={ocH} strokeWidth="1" opacity="0.5"/>
+        {/* Skirt folds */}
+        <path d="M34,76 Q30,88 26,100" fill="none" stroke={ocH} strokeWidth="0.6" opacity="0.3"/>
+        <path d="M66,76 Q70,88 74,100" fill="none" stroke={ocH} strokeWidth="0.6" opacity="0.3"/>
+        <path d="M50,70 L50,98" fill="none" stroke={ocH} strokeWidth="0.4" opacity="0.2"/>
+        {/* Highlight on fabric */}
+        <path d="M42,74 Q44,82 40,92" fill="none" stroke="#fff" strokeWidth="0.8" opacity="0.08"/>
+      </g>);
+    }
+    if (s.id <= 5) {
+      return (<g>
+        {/* Blazer / smart casual */}
+        <path d="M34,52 Q30,56 28,64 L26,96 Q50,100 74,96 L72,64 Q70,56 66,52" fill={oc}/>
+        {/* Lapels */}
+        <path d="M38,52 L46,66 L50,64 L54,66 L62,52" fill={skin}/>
+        <path d="M38,52 L46,66 L50,64" fill="none" stroke={oc} strokeWidth="0.6"/>
+        <path d="M50,64 L54,66 L62,52" fill="none" stroke={oc} strokeWidth="0.6"/>
+        {/* Inner shirt */}
+        <path d="M46,66 L50,64 L54,66 L52,80 L48,80Z" fill="#e8e4f0" opacity="0.8"/>
+        {/* Button */}
+        <circle cx="50" cy="72" r="1" fill="none" stroke="#888" strokeWidth="0.5"/>
+        {/* Sleeve lines */}
+        <path d="M28,64 L28,96" fill="none" stroke={ocH} strokeWidth="0.5" opacity="0.3"/>
+        <path d="M72,64 L72,96" fill="none" stroke={ocH} strokeWidth="0.5" opacity="0.3"/>
+      </g>);
+    }
+    // Formal (6-11)
+    return (<g>
+      <path d="M32,52 Q28,56 26,64 L24,98 Q50,104 76,98 L74,64 Q72,56 68,52" fill={oc}/>
+      {/* Structured collar */}
+      <path d="M38,50 L50,48 L62,50" fill={oc} stroke={oc} strokeWidth="0.5"/>
+      <path d="M40,52 L50,58 L60,52" fill={skin}/>
+      <path d="M40,52 L50,58 L60,52" fill="none" stroke={oc} strokeWidth="0.6"/>
+      {/* Center line */}
+      <line x1="50" y1="58" x2="50" y2="96" stroke={ocH} strokeWidth="0.5" opacity="0.3"/>
+      {/* Buttons */}
+      <circle cx="50" cy="66" r="0.8" fill="none" stroke={ocH} strokeWidth="0.5" opacity="0.5"/>
+      <circle cx="50" cy="74" r="0.8" fill="none" stroke={ocH} strokeWidth="0.5" opacity="0.5"/>
+      {/* Badge for politicians */}
+      {s.id>=8 && <circle cx="42" cy="58" r="1.8" fill="#c8a828" opacity="0.7"/>}
+      {s.id===11 && <g>
+        <path d="M36,60 L64,84" stroke="#d4a030" strokeWidth="1.2" opacity="0.2"/>
+      </g>}
+      {/* Fabric highlight */}
+      <path d="M40,64 Q42,76 38,90" fill="none" stroke="#fff" strokeWidth="0.6" opacity="0.06"/>
+    </g>);
+  };
+
+  const renderLegs = () => {
+    const shoeC = s.id >= 6 ? "#1a1a1a" : "#222";
+    return (<g>
+      {/* Left leg - solid shape with thigh→knee→calf→ankle */}
+      <path d="M38,94 Q36,102 35,110 Q34,116 35,120 Q36,126 34,130 L34,132 L42,132 L42,130 Q40,126 40,120 Q40,116 41,110 Q42,102 44,94Z" fill={skin}/>
+      {/* Left leg inner shadow */}
+      <path d="M40,96 Q38,106 38,114 Q38,120 39,126" fill="none" stroke={skinS} strokeWidth="1.5" opacity="0.2"/>
+      {/* Left knee highlight */}
+      <ellipse cx="38" cy="112" rx="2" ry="3" fill="#fff" opacity="0.06"/>
+
+      {/* Right leg */}
+      <path d="M56,94 Q58,102 59,110 Q60,116 59,120 Q58,126 60,130 L60,132 L68,132 L68,130 Q66,126 66,120 Q66,116 65,110 Q64,102 62,94Z" fill={skin}/>
+      {/* Right leg inner shadow */}
+      <path d="M62,96 Q64,106 64,114 Q64,120 63,126" fill="none" stroke={skinS} strokeWidth="1.5" opacity="0.2"/>
+      {/* Right knee highlight */}
+      <ellipse cx="62" cy="112" rx="2" ry="3" fill="#fff" opacity="0.06"/>
+
+      {/* Shoes */}
+      <path d="M32,131 Q32,128 34,128 L42,128 Q44,128 44,131 Q44,134 38,135 Q32,134 32,131Z" fill={shoeC}/>
+      <path d="M58,131 Q58,128 60,128 L68,128 Q70,128 70,131 Q70,134 64,135 Q58,134 58,131Z" fill={shoeC}/>
+      {/* Shoe straps */}
+      <path d="M34,129 Q38,127 42,129" fill="none" stroke="#444" strokeWidth="0.5"/>
+      <path d="M60,129 Q64,127 68,129" fill="none" stroke="#444" strokeWidth="0.5"/>
+      {/* Small heel */}
+      <rect x="36" y="134" width="4" height="2" rx="1" fill={shoeC}/>
+      <rect x="62" y="134" width="4" height="2" rx="1" fill={shoeC}/>
+    </g>);
+  };
+
+  return (
+    <svg viewBox="0 0 100 140" style={{width:"100%",height:"100%"}}>
+      {/* Subtle BG */}
+      <circle cx="50" cy="60" r="48" fill={ac} opacity="0.06"/>
+      {glow && <circle cx="50" cy="60" r="44" fill={ac} opacity="0.04"/>}
+
+      {/* Hair behind */}
+      {renderHairBack()}
+
+      {/* BODY */}
+      {/* Neck - smooth shape */}
+      <path d="M44,44 Q44,48 44,52 L56,52 Q56,48 56,44 Q54,46 50,46 Q46,46 44,44Z" fill={skin}/>
+      {/* Shoulders / upper body skin */}
+      <path d="M34,52 Q36,50 42,48 L58,48 Q64,50 66,52 L66,56 L34,56Z" fill={skin}/>
+      <path d="M44,46 Q50,48 56,46" fill="none" stroke={skinS} strokeWidth="0.6" opacity="0.2"/>
+
+      {/* Arms - filled shapes with volume */}
+      {/* Left arm */}
+      <path d="M34,52 Q30,54 26,60 Q22,68 20,76 Q18,80 18,84 L22,84 Q22,80 24,76 Q26,68 30,62 Q32,58 34,56Z" fill={skin}/>
+      <path d="M32,56 Q28,60 25,68" fill="none" stroke={skinS} strokeWidth="1" opacity="0.2"/>
+      {/* Left hand */}
+      <path d="M17,82 Q16,80 18,78 Q20,80 22,78 L24,82 Q22,86 18,86 Q16,85 17,82Z" fill={skin}/>
+      {/* Right arm */}
+      <path d="M66,52 Q70,54 74,60 Q78,68 80,76 Q82,80 82,84 L78,84 Q78,80 76,76 Q74,68 70,62 Q68,58 66,56Z" fill={skin}/>
+      <path d="M68,56 Q72,60 75,68" fill="none" stroke={skinS} strokeWidth="1" opacity="0.2"/>
+      {/* Right hand */}
+      <path d="M83,82 Q84,80 82,78 Q80,80 78,78 L76,82 Q78,86 82,86 Q84,85 83,82Z" fill={skin}/>
+
+      {/* Outfit */}
+      {renderOutfit()}
+
+      {/* Legs */}
+      {renderLegs()}
+
+      {/* HEAD */}
+      <ellipse cx="50" cy="30" rx={jw} ry="18" fill={skin}/>
+      {/* Face shadow */}
+      <ellipse cx="50" cy="34" rx={jw-2} ry="8" fill={skinS} opacity="0.15"/>
+
+      {/* EYES */}
+      {/* Left eye */}
+      <ellipse cx="42" cy="30" rx={4*eS} ry={4.5*eS} fill="#fff"/>
+      <ellipse cx="42" cy="31" rx={3*eS} ry={3.5*eS} fill={eyeC}/>
+      <ellipse cx="42" cy="32" rx={2.2*eS} ry={2.5*eS} fill="#601818"/>
+      <circle cx="41" cy="29.5" r={1.2*eS} fill="#fff"/>
+      <circle cx="43.5" cy="31" r={0.6*eS} fill="#fff" opacity="0.7"/>
+      {/* Upper lid */}
+      <path d={`M${42-4.5*eS},29 Q42,${25-eS*2} ${42+4.5*eS},29`} fill="none" stroke="#2a1818" strokeWidth="1.8" strokeLinecap="round"/>
+      {/* Lower lash */}
+      <path d={`M${42-3*eS},34 Q42,${35.5+eS*0.5} ${42+3*eS},34`} fill="none" stroke="#2a1818" strokeWidth="0.5" opacity="0.3"/>
+      {/* Lashes */}
+      <line x1={42-4.5*eS} y1="28.5" x2={42-6*eS} y2="26" stroke="#2a1818" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1={42-3*eS} y1="27" x2={42-4*eS} y2="24.5" stroke="#2a1818" strokeWidth="1" strokeLinecap="round"/>
+
+      {/* Right eye */}
+      <ellipse cx="58" cy="30" rx={4*eS} ry={4.5*eS} fill="#fff"/>
+      <ellipse cx="58" cy="31" rx={3*eS} ry={3.5*eS} fill={eyeC}/>
+      <ellipse cx="58" cy="32" rx={2.2*eS} ry={2.5*eS} fill="#601818"/>
+      <circle cx="57" cy="29.5" r={1.2*eS} fill="#fff"/>
+      <circle cx="59.5" cy="31" r={0.6*eS} fill="#fff" opacity="0.7"/>
+      <path d={`M${58-4.5*eS},29 Q58,${25-eS*2} ${58+4.5*eS},29`} fill="none" stroke="#2a1818" strokeWidth="1.8" strokeLinecap="round"/>
+      <path d={`M${58-3*eS},34 Q58,${35.5+eS*0.5} ${58+3*eS},34`} fill="none" stroke="#2a1818" strokeWidth="0.5" opacity="0.3"/>
+      <line x1={58+4.5*eS} y1="28.5" x2={58+6*eS} y2="26" stroke="#2a1818" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1={58+3*eS} y1="27" x2={58+4*eS} y2="24.5" stroke="#2a1818" strokeWidth="1" strokeLinecap="round"/>
+
+      {/* Blush */}
+      <ellipse cx="38" cy="35" rx="4" ry="2.5" fill={blush} opacity="0.25"/>
+      <ellipse cx="62" cy="35" rx="4" ry="2.5" fill={blush} opacity="0.25"/>
+
+      {/* Eyebrows */}
+      <path d={`M${42-5*eS},24 Q42,${21.5-eS} ${42+4*eS},24.5`} fill="none" stroke={hcS} strokeWidth="0.8" strokeLinecap="round"/>
+      <path d={`M${58-4*eS},24.5 Q58,${21.5-eS} ${58+5*eS},24`} fill="none" stroke={hcS} strokeWidth="0.8" strokeLinecap="round"/>
+
+      {/* Nose */}
+      <path d={`M50,34 L${slimN?49.5:49},38`} fill="none" stroke="#c8a898" strokeWidth="0.8" strokeLinecap="round"/>
+
+      {/* Mouth */}
+      {lush ? (<g>
+        <path d="M46,41 Q50,39.5 54,41" fill="none" stroke="#c08080" strokeWidth="0.8"/>
+        <path d="M46,41 Q50,44 54,41" fill="#d88888" opacity="0.6"/>
+      </g>) : (<g>
+        <path d="M47,41 Q50,40 53,41" fill="none" stroke="#c08080" strokeWidth="0.7"/>
+        <path d="M48,41 Q50,42.5 52,41" fill="#d08888" opacity="0.4"/>
+      </g>)}
+
+      {/* Bangs overlay */}
+      {renderBangs()}
+
+      {/* Earrings */}
+      {s.id >= 2 && (<g>
+        <circle cx={50-jw+1} cy="38" r="1.5" fill={ac} opacity="0.5"/>
+        <circle cx={50+jw-1} cy="38" r="1.5" fill={ac} opacity="0.5"/>
+        {s.id >= 5 && <g>
+          <line x1={50-jw+1} y1="39.5" x2={50-jw+1} y2="42" stroke={ac} strokeWidth="0.5" opacity="0.5"/>
+          <line x1={50+jw-1} y1="39.5" x2={50+jw-1} y2="42" stroke={ac} strokeWidth="0.5" opacity="0.5"/>
+        </g>}
+      </g>)}
+
+      {/* Necklace */}
+      {s.id >= 3 && (<g>
+        <path d={`M${50-jw+4},44 Q50,48 ${50+jw-4},44`} fill="none" stroke={ac} strokeWidth="0.8" opacity="0.5"/>
+        {s.id >= 6 && <circle cx="50" cy="47" r="1.5" fill={ac} opacity="0.4"/>}
+      </g>)}
+
+      {/* Sparkle for glamour */}
+      {glamour > 60 && <text x="78" y="18" fontSize="5" fill={ac} opacity="0.4">✧</text>}
+      {full && <g opacity="0.35">
+        <text x="12" y="22" fontSize="4" fill={ac}>✦</text>
+        <text x="82" y="44" fontSize="3" fill={ac}>✧</text>
+      </g>}
+    </svg>
+  );
+};
+
+// ─── UI COMPONENTS (compact) ─────────────────────────────────
+const Particles=({color,type})=>{const p=useMemo(()=>Array.from({length:type==="s"?16:9},(_,i)=>({id:i,x:Math.random()*100,y:Math.random()*100,s:type==="s"?2+Math.random()*3:6+Math.random()*12,d:4+Math.random()*6,dl:Math.random()*5,o:type==="s"?.2+Math.random()*.4:.04+Math.random()*.07})),[color,type]);return(<div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:0,overflow:"hidden"}}>{p.map(q=><div key={q.id} style={{position:"absolute",left:`${q.x}%`,top:`${q.y}%`,width:`${q.s}px`,height:`${q.s}px`,borderRadius:"50%",opacity:q.o,background:type==="s"?color:`radial-gradient(circle,${color}40,transparent 70%)`,animation:`pf ${q.d}s ease-in-out ${q.dl}s infinite alternate`}}/>)}</div>)};
+const SBar=({l,v,max,c,e,r})=>(<div style={{marginBottom:"4px"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"10px",color:"#999",marginBottom:"1px"}}><span>{e} {l}</span><span><span style={{color:r!==undefined&&v>=r?"#22c55e":c,fontWeight:700}}>{Math.min(v,max)}</span><span style={{color:"#444"}}>/{max}</span>{r!==undefined&&<span style={{color:"#444",marginLeft:"3px"}}>(要{r})</span>}</span></div><div style={{height:"5px",background:"#0a0a12",borderRadius:"3px",overflow:"hidden",position:"relative"}}><div style={{height:"100%",borderRadius:"3px",transition:"width .6s cubic-bezier(.4,0,.2,1)",width:`${Math.min(v/max*100,100)}%`,background:`linear-gradient(90deg,${c}55,${c})`,boxShadow:`0 0 6px ${c}33`}}/>{r!==undefined&&<div style={{position:"absolute",top:0,bottom:0,left:`${r/max*100}%`,width:"2px",background:v>=r?"#22c55e55":"#ef444455"}}/>}</div></div>);
+const EvtPop=({ev,onC})=>(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={onC}><div style={{background:"linear-gradient(135deg,#0d0d1a,#1a1025)",borderRadius:"14px",padding:"20px",maxWidth:"280px",width:"100%",textAlign:"center",border:`1px solid ${ev.type==="bad"?"#ef4444":"#fbbf24"}18`,animation:"pi .3s ease"}}><div style={{fontSize:"30px",marginBottom:"6px"}}>{ev.type==="bad"?"😰":ev.type==="fame"?"🌟":"🎉"}</div><p style={{color:"#ddd",fontSize:"13px",lineHeight:1.5,margin:"0 0 8px"}}>{ev.text}</p><div style={{fontSize:"11px",fontWeight:700,color:ev.type==="bad"?"#ef4444":"#fbbf24"}}>収入 ×{ev.mult}{ev.fB?` ／ 👑+${ev.fB}`:""}</div><div style={{color:"#333",fontSize:"9px",marginTop:"6px"}}>タップで閉じる</div></div></div>);
+
+// ─── ROULETTE ────────────────────────────────────────────────
+const Roulette=({su,onD})=>{const[sp,setSp]=useState(true);const[a,setA]=useState(0);const[r,setR]=useState(null);const fr=useRef(null);
+useEffect(()=>{let aa=0,s=20+Math.random()*10;const ok=Math.random()*100>su.risk;const go=()=>{s*=.97;aa+=s;setA(aa%360);if(s>.3){sfx.play("rl");fr.current=requestAnimationFrame(go)}else{setSp(false);setR(ok);sfx.play(ok?"ok":"ng")}};fr.current=requestAnimationFrame(go);return()=>{if(fr.current)cancelAnimationFrame(fr.current)}},[su]);
+return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.88)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"20px"}} onClick={r!==null?()=>onD(r):undefined}><div style={{background:"linear-gradient(135deg,#0d0d1a,#1a1025)",borderRadius:"18px",padding:"24px",maxWidth:"290px",width:"100%",textAlign:"center",border:"1px solid #ffffff0a"}}><div style={{fontSize:"11px",color:"#666",letterSpacing:"2px",marginBottom:"3px"}}>{sp?"施術中...":"結果"}</div><div style={{fontSize:"14px",color:"#fff",fontWeight:700,marginBottom:"12px"}}>{su.emoji} {su.name}</div><div style={{width:"130px",height:"130px",margin:"0 auto 14px",position:"relative",borderRadius:"50%",border:"3px solid #ffffff0a",background:`conic-gradient(#22c55e20 0deg,#22c55e20 ${360-su.risk*3.6}deg,#ef444420 ${360-su.risk*3.6}deg,#ef444420 360deg)`}}><div style={{position:"absolute",top:"-6px",left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"6px solid transparent",borderRight:"6px solid transparent",borderTop:"9px solid #fbbf24",zIndex:2}}/><div style={{position:"absolute",inset:"9px",borderRadius:"50%",background:"#0d0d1a",display:"flex",alignItems:"center",justifyContent:"center",transform:`rotate(${a}deg)`,transition:sp?"none":"transform .3s ease-out"}}><div style={{position:"absolute",top:"7px",left:"50%",transform:"translateX(-50%)",width:"3px",height:"16px",background:"#fbbf24",borderRadius:"2px"}}/><div style={{fontSize:"24px"}}>{sp?"🔄":r?"✅":"💔"}</div></div></div><div style={{display:"flex",justifyContent:"center",gap:"10px",fontSize:"10px",marginBottom:"8px"}}><span style={{color:"#22c55e"}}>✅{100-su.risk}%</span><span style={{color:"#ef4444"}}>❌{su.risk}%</span></div>{r!==null&&<div style={{animation:"pi .3s ease"}}><div style={{fontSize:"15px",fontWeight:800,color:r?"#22c55e":"#ef4444",marginBottom:"4px"}}>{r?"施術成功！":"施術失敗…"}</div><div style={{fontSize:"10px",color:r?"#22c55e88":"#ef444488"}}>{r?`💎+${su.g} ⭐+${su.i}${su.f?` 👑+${su.f}`:""}`:`効果半減 💎+${Math.floor(su.g*.5)}`}</div><div style={{color:"#333",fontSize:"9px",marginTop:"8px"}}>タップで閉じる</div></div>}</div></div>)};
+
+// ─── CONVO GAME ──────────────────────────────────────────────
+const Convo=({stg,earn,glam,onD})=>{const[tm,setTm]=useState(100);const[sel,setSel]=useState(null);
+const[ch]=useState(()=>{const p=CONVOS.filter(c=>c.stages.includes(stg));return p[Math.floor(Math.random()*p.length)]||CONVOS[0]});
+useEffect(()=>{if(sel!==null)return;const id=setInterval(()=>{setTm(t=>{if(t<=0){clearInterval(id);setSel(-1);return 0}return t-(100/(ch.timer||100)*2)})},100);return()=>clearInterval(id)},[sel,ch.timer]);
+const pick=(i)=>{if(sel!==null)return;setSel(i);sfx.play(i===ch.best?"pf":ch.ch[i].s>=1.5?"ok":"wr")};
+const res=sel===null?null:sel===-1?{ok:false,pf:false,text:"⏰ 時間切れ",money:0}:{ok:ch.ch[sel].s>=1.5,pf:sel===ch.best,text:sel===ch.best?"✨ PERFECT!":ch.ch[sel].s>=1.5?"⭕ いい判断！":"❌ 微妙…",money:Math.floor(earn*(1+glam/100*2.5)*ch.ch[sel].s*5)};
+return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.9)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"14px"}}><div style={{background:"linear-gradient(135deg,#0d0d1a,#1a1025)",borderRadius:"16px",padding:"20px",maxWidth:"330px",width:"100%",border:"1px solid #ffffff0a"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}><div><span style={{fontSize:"10px",color:"#fbbf24",letterSpacing:"2px",fontWeight:700}}>🎭 接客チャレンジ</span>{ch.diff==="H"&&<span style={{marginLeft:"5px",fontSize:"8px",color:"#ef4444",background:"#ef444418",padding:"1px 5px",borderRadius:"4px"}}>HARD</span>}{ch.diff==="M"&&<span style={{marginLeft:"5px",fontSize:"8px",color:"#f59e0b",background:"#f59e0b18",padding:"1px 5px",borderRadius:"4px"}}>MEDIUM</span>}</div>{sel===null&&<div style={{width:"45px",height:"4px",background:"#111",borderRadius:"2px",overflow:"hidden"}}><div style={{height:"100%",borderRadius:"2px",transition:"width .1s linear",width:`${Math.max(tm,0)}%`,background:tm>30?"#22c55e":tm>15?"#f59e0b":"#ef4444"}}/></div>}</div>
+<p style={{color:"#e2e8f0",fontSize:"13px",lineHeight:1.6,margin:"0 0 12px",fontWeight:600}}>{ch.sit}</p>
+<div style={{display:"flex",flexDirection:"column",gap:"5px",marginBottom:"12px"}}>{ch.ch.map((c,i)=>{const show=sel!==null;let bg="rgba(255,255,255,.03)",bc="#ffffff08";if(show&&i===ch.best){bg="#22c55e10";bc="#22c55e33"}if(show&&sel===i&&i!==ch.best&&c.s<1.5){bg="#ef444410";bc="#ef444433"}if(show&&sel===i&&c.s>=1.5&&i!==ch.best){bg="#f59e0b10";bc="#f59e0b33"}return(<button key={i} onClick={()=>pick(i)} disabled={sel!==null} style={{padding:"9px 10px",borderRadius:"8px",border:`1px solid ${bc}`,background:bg,color:show&&i!==sel&&i!==ch.best?"#444":"#ccc",fontSize:"12px",textAlign:"left",cursor:sel===null?"pointer":"default",transition:"all .15s"}}>{c.t}{show&&i===ch.best&&<span style={{float:"right",color:"#22c55e",fontSize:"10px"}}>BEST✓</span>}</button>)})}</div>
+{res&&<div style={{textAlign:"center",animation:"pi .3s ease"}}><div style={{fontSize:"16px",fontWeight:800,color:res.pf?"#fbbf24":res.ok?"#22c55e":"#ef4444",marginBottom:"3px"}}>{res.text}</div>{res.money>0&&<div style={{color:"#fbbf24",fontSize:"13px",fontWeight:700}}>+¥{fmt(res.money)}</div>}<button onClick={()=>onD(res)} style={{marginTop:"8px",padding:"7px 20px",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#fbbf24,#f59e0b)",color:"#000",fontSize:"11px",fontWeight:800,cursor:"pointer"}}>OK</button></div>}</div></div>)};
+
+// ─── STORY ───────────────────────────────────────────────────
+const Story=({s,onC})=>{const[ci,setCi]=useState(0);const[dt,setDt]=useState("");const st=s.story||"";
+useEffect(()=>{setCi(0);setDt("")},[s]);useEffect(()=>{if(ci<st.length){const t=setTimeout(()=>{setDt(st.slice(0,ci+1));setCi(c=>c+1)},28);return()=>clearTimeout(t)}},[ci,st]);
+const skip=()=>{if(ci<st.length){setDt(st);setCi(st.length)}else onC()};
+return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.94)",zIndex:1000,display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"20px"}} onClick={skip}><div style={{textAlign:"center",marginBottom:"auto",paddingTop:"40px",animation:"fi .8s ease"}}><div style={{fontSize:"10px",color:"#555",letterSpacing:"4px",marginBottom:"5px"}}>STAGE {s.id+1}</div><div style={{fontSize:"40px",marginBottom:"4px"}}>{s.emoji}</div><h2 style={{fontSize:"20px",fontWeight:900,color:s.accent,margin:"0 0 2px"}}>{s.name}</h2><div style={{fontSize:"11px",color:"#444"}}>{s.area}</div>{s.rival&&<div style={{marginTop:"10px",display:"inline-flex",alignItems:"center",gap:"4px",padding:"3px 10px",borderRadius:"14px",background:"#ef444410",border:"1px solid #ef444418",fontSize:"10px",color:"#ef4444"}}>{s.rival.emoji} ライバル: {s.rival.name}</div>}</div><div style={{background:"linear-gradient(180deg,#0d0d1aee,#0d0d1a)",borderRadius:"12px",padding:"16px",marginBottom:"14px",border:"1px solid #ffffff06",minHeight:"90px"}}><p style={{color:"#e2e8f0",fontSize:"13px",lineHeight:1.8,margin:0,whiteSpace:"pre-wrap"}}>{dt}{ci<st.length&&<span style={{animation:"bl .8s infinite"}}>▍</span>}</p></div><div style={{textAlign:"center",color:"#333",fontSize:"9px"}}>{ci<st.length?"タップでスキップ":"タップで始める"}</div></div>)};
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN
+// ═══════════════════════════════════════════════════════════════
+function NightQueen(){
+  const[money,setMoney]=useState(0);const[glam,setGlam]=useState(0);const[intel,setIntel]=useState(0);const[fame,setFame]=useState(0);
+  const[stage,setStage]=useState(0);const[phase,setPhase]=useState("work");const[combo,setCombo]=useState(0);const[mxCombo,setMxC]=useState(0);
+  const[tapFx,setTapFx]=useState([]);const[shake,setShake]=useState(false);const[evt,setEvt]=useState(null);const[rou,setRou]=useState(null);
+  const[conv,setConv]=useState(false);const[story,setStory]=useState(null);const[muted,setMuted]=useState(false);
+  const[taps,setTaps]=useState(0);const[auto,setAuto]=useState(0);const[started,setStarted]=useState(false);const[cleared,setCleared]=useState(false);
+  const[doneS,setDoneS]=useState(new Set());const[doneK,setDoneK]=useState(new Set());
+  const ct=useRef(null);const ti=useRef(0);const cs=STAGES[stage];const ns=STAGES[stage+1];
+
+  useEffect(()=>{if(auto<=0)return;const id=setInterval(()=>setMoney(m=>m+auto),1000);return()=>clearInterval(id)},[auto]);
+  useEffect(()=>{setAuto(Math.floor(cs.earn*.12*(1+glam/100)))},[stage,glam,cs.earn]);
+  useEffect(()=>{if(started&&cs.story){setStory(cs);sfx.bgm(stage)}},[stage,started]);
+
+  const start=()=>{sfx.init();sfx.bgm(0);setStarted(true);setStory(STAGES[0])};
+
+  const handleTap=useCallback((e)=>{
+    sfx.init();const rect=e.currentTarget.getBoundingClientRect();
+    const x=e.clientX??e.touches?.[0]?.clientX??rect.left+rect.width/2;
+    const y=e.clientY??e.touches?.[0]?.clientY??rect.top+rect.height/2;
+    if(ct.current)clearTimeout(ct.current);const nc=combo+1;setCombo(nc);setMxC(m=>Math.max(m,nc));
+    ct.current=setTimeout(()=>setCombo(0),1200);
+    if(nc>0&&nc%10===0)sfx.play("combo",{level:Math.floor(nc/10)});else sfx.play("tap",{combo:nc});
+    const bM=1+(glam/100)*2.5;const cM=1+Math.min(nc,50)*.02;let earn=Math.floor(cs.earn*bM*cM);
+    let ev=null;if(Math.random()<.08){ev=EVENTS[Math.floor(Math.random()*EVENTS.length)];earn=Math.floor(earn*ev.mult);if(ev.fB)setFame(f=>Math.min(f+ev.fB,100));if(ev.type==="bad"){setShake(true);setTimeout(()=>setShake(false),300)}}
+    if(!ev&&Math.random()<.04&&taps>3)setConv(true);
+    setMoney(m=>m+earn);setTaps(t=>t+1);
+    const id=++ti.current;setTapFx(p=>[...p.slice(-8),{x,y,amount:earn,id,combo:nc}]);setTimeout(()=>setTapFx(p=>p.filter(e=>e.id!==id)),900);
+    if(ev)setTimeout(()=>setEvt(ev),150);
+  },[combo,glam,cs.earn,taps]);
+
+  const doSurg=useCallback((s)=>{if(money<s.cost||doneS.has(s.id))return;sfx.play("buy");setMoney(m=>m-s.cost);setRou(s)},[money,doneS]);
+  const onRouD=useCallback((ok)=>{if(!rou)return;const m=ok?1:.5;setGlam(g=>Math.min(g+Math.floor(rou.g*m),100));setIntel(i=>Math.min(i+Math.floor(rou.i*m),100));if(rou.f)setFame(f=>Math.min(f+Math.floor(rou.f*m),100));setDoneS(p=>new Set([...p,rou.id]));setRou(null)},[rou]);
+  const doSkill=useCallback((sk)=>{if(money<sk.cost||doneK.has(sk.id))return;sfx.play("buy");setMoney(m=>m-sk.cost);setIntel(i=>Math.min(i+sk.i,100));setFame(f=>Math.min(f+sk.f,100));setDoneK(p=>new Set([...p,sk.id]));sfx.play("coin")},[money,doneK]);
+  const onConvD=useCallback((r)=>{if(r.money)setMoney(m=>m+r.money);setConv(false)},[]);
+  const canAdv=ns&&glam>=ns.rG&&intel>=ns.rI&&fame>=ns.rF;
+  const advance=useCallback(()=>{if(!canAdv)return;sfx.play("up");setStage(s=>s+1);setPhase("work");if(stage+1===STAGES.length-1)setCleared(true)},[canAdv,stage]);
+  const toggleM=()=>{const m=sfx.toggle();setMuted(m);if(!m)sfx.bgm(stage)};
+
+  // TITLE
+  if(!started)return(
+    <div style={{minHeight:"100vh",maxWidth:"430px",margin:"0 auto",background:"linear-gradient(180deg,#080005,#180510 30%,#0a0208 70%,#040002)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",padding:"40px 20px",position:"relative",overflow:"hidden"}}>
+      <style>{`@keyframes tg{0%,100%{text-shadow:0 0 20px #fbbf2433}50%{text-shadow:0 0 40px #fbbf2466,0 0 80px #fbbf2422}}@keyframes fi{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}@keyframes fl{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}@keyframes pf{0%{transform:translateY(0) translateX(0)}50%{transform:translateY(-10px) translateX(5px)}100%{transform:translateY(0) translateX(0)}}`}</style>
+      <Particles color="#fbbf24" type="b"/>
+      <div style={{position:"relative",zIndex:1,textAlign:"center"}}>
+        <div style={{width:"120px",height:"132px",margin:"0 auto 8px",animation:"fl 3s ease-in-out infinite"}}><Character stageData={STAGES[3]} done={new Set(["s01","s02","s05"])} glamour={50}/></div>
+        <h1 style={{fontSize:"30px",fontWeight:900,color:"#fbbf24",margin:"0 0 4px",letterSpacing:"6px",animation:"tg 3s ease infinite"}}>NIGHT QUEEN</h1>
+        <p style={{fontSize:"11px",color:"#666",margin:"0 0 32px",letterSpacing:"3px",animation:"fi 1s ease .3s both"}}>夜の道を、極めろ。</p>
+        <button onClick={start} style={{padding:"11px 40px",borderRadius:"26px",border:"2px solid #fbbf2440",background:"linear-gradient(135deg,#fbbf2415,#f59e0b0a)",color:"#fbbf24",fontSize:"14px",fontWeight:800,cursor:"pointer",letterSpacing:"4px",animation:"fi 1s ease .6s both",transition:"all .3s"}} onMouseOver={e=>{e.currentTarget.style.boxShadow="0 0 28px #fbbf2433"}} onMouseOut={e=>{e.currentTarget.style.boxShadow="none"}}>START</button>
+        <p style={{marginTop:"36px",color:"#2a2a2a",fontSize:"9px",lineHeight:1.8,animation:"fi 1s ease .9s both"}}>場末のスナック → 銀座 → メディア → 政界<br/>12ステージを駆け上がれ<br/><br/>※このゲームはフィクションです</p>
+      </div>
+    </div>
+  );
+
+  // MAIN
+  return(
+    <div style={{minHeight:"100vh",maxWidth:"430px",margin:"0 auto",background:cs.bg,color:"#fff",fontFamily:"'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",position:"relative",overflow:"hidden",userSelect:"none",WebkitTapHighlightColor:"transparent",transform:shake?`translateX(${Math.random()>.5?3:-3}px)`:"none",transition:shake?"none":"transform .1s"}}>
+      <style>{`@keyframes fu{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-65px) scale(1.3)}}@keyframes pi{0%{opacity:0;transform:scale(.7)}100%{opacity:1;transform:scale(1)}}@keyframes pu{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}@keyframes gl{0%,100%{box-shadow:0 0 18px var(--gw)}50%{box-shadow:0 0 40px var(--gw)}}@keyframes pf{0%{transform:translateY(0) translateX(0)}50%{transform:translateY(-10px) translateX(5px)}100%{transform:translateY(0) translateX(0)}}@keyframes bl{0%,100%{opacity:1}50%{opacity:0}}@keyframes fi{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}@keyframes cf{0%{color:#fff}50%{color:#fbbf24}100%{color:#fff}}*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:2px}`}</style>
+      <Particles color={cs.ptC} type={cs.ptT}/>
+
+      {/* HEADER */}
+      <div style={{padding:"8px 12px 4px",background:"rgba(0,0,0,.55)",backdropFilter:"blur(12px)",position:"sticky",top:0,zIndex:100,borderBottom:"1px solid #ffffff04"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"2px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+            <div style={{width:"48px",height:"62px",borderRadius:"8px",overflow:"hidden",border:`1px solid ${cs.accent}25`,background:`${cs.accent}06`,flexShrink:0}}>
+              <Character stageData={cs} done={doneS} glamour={glam}/>
+            </div>
+            <div>
+              <div style={{fontSize:"8px",color:"#444",letterSpacing:"2px"}}>STAGE {stage+1}/{STAGES.length}</div>
+              <div style={{fontSize:"12px",fontWeight:900,color:cs.accent,lineHeight:1.2}}>{cs.name}</div>
+              <div style={{fontSize:"8px",color:"#333",marginTop:"1px"}}>{doneS.size+doneK.size}/{SURGERIES.length+SKILLS.length} 完了</div>
+            </div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <button onClick={toggleM} style={{background:"none",border:"none",color:"#333",fontSize:"12px",cursor:"pointer",padding:"1px"}}>{muted?"🔇":"🔊"}</button>
+            <div style={{fontSize:"8px",color:"#555"}}>所持金</div>
+            <div style={{fontSize:"15px",fontWeight:900,color:"#fbbf24"}}>¥{fmt(money)}</div>
+            {auto>0&&<div style={{fontSize:"7px",color:"#fbbf2444"}}>+¥{fmt(auto)}/s</div>}
+          </div>
+        </div>
+        <SBar l="華" v={glam} max={100} c="#ec4899" e="💎" r={ns?.rG}/>
+        <SBar l="知性" v={intel} max={100} c="#8b5cf6" e="⭐" r={ns?.rI}/>
+        <SBar l="影響力" v={fame} max={100} c="#fbbf24" e="👑" r={ns?.rF}/>
+      </div>
+
+      {/* TABS */}
+      <div style={{display:"flex",padding:"4px 12px",gap:"4px",background:"rgba(0,0,0,.35)",backdropFilter:"blur(8px)",position:"sticky",top:"132px",zIndex:99}}>
+        {[{id:"work",l:cs.tap,e:cs.emoji},{id:"clinic",l:`整形 ${doneS.size}/${SURGERIES.length}`,e:"🏥"},{id:"skills",l:`スキル ${doneK.size}/${SKILLS.length}`,e:"📖"}].map(tab=>(
+          <button key={tab.id} onClick={()=>setPhase(tab.id)} style={{flex:1,padding:"7px 3px",borderRadius:"6px",border:"none",background:phase===tab.id?`${cs.accent}15`:"rgba(255,255,255,.01)",color:phase===tab.id?cs.accent:"#3a3a3a",fontSize:"10px",fontWeight:phase===tab.id?800:400,cursor:"pointer",transition:"all .2s",borderBottom:phase===tab.id?`2px solid ${cs.accent}`:"2px solid transparent"}}>{tab.e} {tab.l}</button>
+        ))}
+      </div>
+
+      {/* CONTENT */}
+      <div style={{padding:"8px 12px 120px",minHeight:"50vh",position:"relative",zIndex:1}}>
+
+        {phase==="work"&&<div>
+          {combo>2&&<div style={{textAlign:"center",marginBottom:"5px",animation:"pi .2s ease"}}><span style={{display:"inline-block",padding:"2px 10px",borderRadius:"14px",background:combo>=20?"#fbbf2418":"#ffffff05",border:`1px solid ${combo>=20?"#fbbf2428":"#ffffff08"}`,fontSize:"11px",fontWeight:900,color:combo>=30?"#fbbf24":combo>=20?"#f59e0b":combo>=10?"#ec4899":"#666",animation:combo>=10?"cf .5s ease infinite":"none"}}>🔥 {combo} COMBO{combo>=10?` ×${(1+Math.min(combo,50)*.02).toFixed(2)}`:""}</span></div>}
+
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:"10px"}}>
+            <p style={{color:"#444",fontSize:"9px",margin:"0 0 6px"}}>{cs.area}</p>
+            {/* Large character */}
+            <div style={{width:"120px",height:"156px",marginBottom:"8px",filter:`drop-shadow(0 0 15px ${cs.accent}18)`,transition:"all .5s"}}>
+              <Character stageData={cs} done={doneS} glamour={glam}/>
+            </div>
+            {/* Tap */}
+            <div onClick={handleTap} onTouchStart={e=>{e.currentTarget.style.transform="scale(.92)"}} onTouchEnd={e=>{e.currentTarget.style.transform="scale(1)"}} onMouseDown={e=>{e.currentTarget.style.transform="scale(.92)"}} onMouseUp={e=>{e.currentTarget.style.transform="scale(1)"}}
+              style={{width:"140px",height:"140px",borderRadius:"50%",background:`radial-gradient(circle at 40% 40%,${cs.accent}15,transparent 70%)`,border:`2px solid ${cs.accent}22`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"transform .1s","--gw":`${cs.accent}22`,animation:"gl 2.5s ease infinite"}}>
+              <div style={{fontSize:"32px",marginBottom:"3px",filter:`drop-shadow(0 0 5px ${cs.accent}28)`}}>{cs.emoji}</div>
+              <div style={{color:cs.accent,fontSize:"11px",fontWeight:800}}>{cs.tap}</div>
+              <div style={{color:"#333",fontSize:"8px",marginTop:"2px"}}>¥{fmt(Math.floor(cs.earn*(1+glam/100*2.5)))}/tap</div>
+            </div>
+          </div>
+
+          <div style={{textAlign:"center",color:"#222",fontSize:"8px",marginBottom:"14px"}}>tap {taps.toLocaleString()} ／ max combo {mxCombo}</div>
+
+          {ns&&<div style={{padding:"10px",borderRadius:"10px",background:"rgba(0,0,0,.3)",border:"1px solid #ffffff04"}}>
+            <div style={{fontSize:"9px",color:"#444",letterSpacing:"1px",marginBottom:"4px"}}>NEXT → {ns.emoji} {ns.name}</div>
+            <div style={{display:"flex",gap:"4px",flexWrap:"wrap",marginBottom:"7px"}}>
+              {[{l:"💎",v:glam,r:ns.rG},{l:"⭐",v:intel,r:ns.rI},{l:"👑",v:fame,r:ns.rF}].map((x,i)=><span key={i} style={{padding:"1px 6px",borderRadius:"4px",fontSize:"9px",fontWeight:700,background:x.v>=x.r?"#22c55e10":"#ef444410",color:x.v>=x.r?"#22c55e":"#ef4444"}}>{x.l}{x.v}/{x.r}</span>)}
+            </div>
+            <button onClick={advance} disabled={!canAdv} style={{width:"100%",padding:"9px",borderRadius:"8px",border:"none",background:canAdv?`linear-gradient(135deg,${cs.accent},${cs.accent}bb)`:"#0a0a10",color:canAdv?"#fff":"#222",fontSize:"11px",fontWeight:800,cursor:canAdv?"pointer":"default",transition:"all .3s",boxShadow:canAdv?`0 4px 18px ${cs.accent}28`:"none",letterSpacing:canAdv?"2px":"0"}}>{canAdv?"🚀 ステージアップ":"🔒 条件未達成"}</button>
+          </div>}
+
+          {cleared&&!ns&&<div style={{marginTop:"12px",padding:"20px",borderRadius:"14px",textAlign:"center",background:"linear-gradient(135deg,#1a080028,#2a120428)",border:"2px solid #fbbf2428","--gw":"#fbbf2428",animation:"gl 2s ease infinite"}}>
+            <div style={{fontSize:"44px",marginBottom:"4px",animation:"pu 1.5s ease infinite"}}>👑</div>
+            <h2 style={{color:"#fbbf24",fontSize:"18px",fontWeight:900,margin:"0 0 5px",letterSpacing:"4px"}}>GAME CLEAR</h2>
+            <p style={{color:"#888",fontSize:"11px",margin:0,lineHeight:1.8}}>あなたは夜の道を極め、<br/>この国の頂点に立った。<br/><span style={{color:"#fbbf24"}}>NIGHT QUEEN</span> の称号を手にした。</p>
+          </div>}
+        </div>}
+
+        {phase==="clinic"&&<div>
+          <div style={{textAlign:"center",marginBottom:"8px"}}>
+            <h2 style={{fontSize:"13px",fontWeight:800,color:"#ec4899",margin:"0 0 2px"}}>🏥 美容クリニック</h2>
+            <p style={{color:"#333",fontSize:"9px",margin:0}}>各施術は1回のみ ／ ルーレットで運命が決まる</p>
+          </div>
+          <div style={{width:"90px",height:"117px",margin:"0 auto 10px",border:`1px solid ${cs.accent}18`,borderRadius:"8px",background:`${cs.accent}04`,overflow:"hidden"}}>
+            <Character stageData={cs} done={doneS} glamour={glam}/>
+          </div>
+          {[1,2,3,4].map(tier=>{const items=SURGERIES.filter(s=>s.tier===tier);const allD=items.every(s=>doneS.has(s.id));return(
+            <div key={tier} style={{marginBottom:"10px"}}>
+              <div style={{fontSize:"9px",color:"#444",letterSpacing:"1px",marginBottom:"4px",padding:"2px 0",borderBottom:"1px solid #ffffff04",display:"flex",justifyContent:"space-between"}}>
+                <span>{["💉 入門","🔪 中級","🏥 上級","💎 プレミアム"][tier-1]}</span>{allD&&<span style={{color:"#22c55e"}}>✓COMPLETE</span>}
+              </div>
+              {items.map(s=>{const d=doneS.has(s.id);const ok=money>=s.cost&&!d;return(
+                <button key={s.id} onClick={()=>ok&&doSurg(s)} style={{width:"100%",padding:"8px 9px",marginBottom:"3px",borderRadius:"7px",border:`1px solid ${d?"#22c55e10":"#ffffff04"}`,background:d?"#22c55e06":ok?"rgba(255,255,255,.02)":"rgba(0,0,0,.18)",opacity:d?.45:ok?1:.3,cursor:ok?"pointer":"default",display:"flex",alignItems:"center",gap:"7px",textAlign:"left",transition:"all .15s"}}>
+                  <div style={{fontSize:"18px",width:"26px",textAlign:"center"}}>{d?"✅":s.emoji}</div>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}>
+                      <span style={{color:d?"#22c55e":"#bbb",fontSize:"11px",fontWeight:700,textDecoration:d?"line-through":"none"}}>{s.name}</span>
+                      {!d&&<span style={{color:"#fbbf24",fontSize:"9px",fontWeight:700}}>¥{fmt(s.cost)}</span>}
+                      {d&&<span style={{color:"#22c55e",fontSize:"8px"}}>済</span>}
+                    </div>
+                    {!d&&<div style={{display:"flex",gap:"4px",marginTop:"2px",fontSize:"8px"}}>
+                      <span style={{color:"#ec4899"}}>💎+{s.g}</span><span style={{color:"#8b5cf6"}}>⭐+{s.i}</span>{s.f>0&&<span style={{color:"#fbbf24"}}>👑+{s.f}</span>}<span style={{color:s.risk>10?"#ef4444":"#f59e0b"}}>⚠️{s.risk}%</span>
+                    </div>}
+                  </div>
+                </button>
+              )})}
+            </div>
+          )})}
+          {doneS.size===SURGERIES.length&&<div style={{textAlign:"center",padding:"12px",borderRadius:"8px",background:"#22c55e06",border:"1px solid #22c55e18"}}><div style={{fontSize:"12px",fontWeight:800,color:"#22c55e"}}>🎉 全施術コンプリート！</div></div>}
+        </div>}
+
+        {phase==="skills"&&<div>
+          <div style={{textAlign:"center",marginBottom:"8px"}}>
+            <h2 style={{fontSize:"13px",fontWeight:800,color:"#8b5cf6",margin:"0 0 2px"}}>📖 スキルアップ</h2>
+            <p style={{color:"#333",fontSize:"9px",margin:0}}>各スキル1回のみ ／ 知性と影響力を高めよう</p>
+          </div>
+          {SKILLS.map(sk=>{const d=doneK.has(sk.id);const ok=money>=sk.cost&&!d;return(
+            <button key={sk.id} onClick={()=>ok&&doSkill(sk)} style={{width:"100%",padding:"8px 9px",marginBottom:"3px",borderRadius:"7px",border:`1px solid ${d?"#22c55e10":"#ffffff04"}`,background:d?"#22c55e06":ok?"rgba(255,255,255,.02)":"rgba(0,0,0,.18)",opacity:d?.45:ok?1:.3,cursor:ok?"pointer":"default",display:"flex",alignItems:"center",gap:"7px",textAlign:"left",transition:"all .15s"}}>
+              <div style={{fontSize:"18px",width:"26px",textAlign:"center"}}>{d?"✅":sk.emoji}</div>
+              <div style={{flex:1}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}>
+                  <span style={{color:d?"#22c55e":"#bbb",fontSize:"11px",fontWeight:700,textDecoration:d?"line-through":"none"}}>{sk.name}</span>
+                  {!d&&<span style={{color:"#fbbf24",fontSize:"9px",fontWeight:700}}>¥{fmt(sk.cost)}</span>}
+                  {d&&<span style={{color:"#22c55e",fontSize:"8px"}}>済</span>}
+                </div>
+                {!d&&<div style={{display:"flex",gap:"4px",marginTop:"2px",fontSize:"8px"}}>
+                  <span style={{color:"#8b5cf6"}}>⭐+{sk.i}</span><span style={{color:"#fbbf24"}}>👑+{sk.f}</span>
+                </div>}
+              </div>
+            </button>
+          )})}
+          {doneK.size===SKILLS.length&&<div style={{textAlign:"center",padding:"12px",borderRadius:"8px",background:"#22c55e06",border:"1px solid #22c55e18"}}><div style={{fontSize:"12px",fontWeight:800,color:"#22c55e"}}>🎉 全スキルコンプリート！</div></div>}
+        </div>}
+      </div>
+
+      {tapFx.map(e=><div key={e.id} style={{position:"fixed",left:e.x-25,top:e.y-16,pointerEvents:"none",color:e.combo>=20?"#fbbf24":e.combo>=10?"#ec4899":"#fff",fontSize:e.combo>=10?"16px":"14px",fontWeight:900,textShadow:`0 0 6px ${cs.accent}55`,animation:"fu .9s ease-out forwards",zIndex:9999}}>+¥{fmt(e.amount)}</div>)}
+      {story&&<Story s={story} onC={()=>setStory(null)}/>}
+      {evt&&<EvtPop ev={evt} onC={()=>setEvt(null)}/>}
+      {rou&&<Roulette su={rou} onD={onRouD}/>}
+      {conv&&<Convo stg={stage} earn={cs.earn} glam={glam} onD={onConvD}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<NightQueen/>);
+</script>
+</body>
+</html>
