@@ -6,6 +6,25 @@
 <title>NIGHT QUEEN</title>
 <meta name="description" content="夜の女王への成り上がりタップゲーム"/>
 <meta name="theme-color" content="#0d0d1a"/>
+<!-- OGP -->
+<meta property="og:title" content="NIGHT QUEEN"/>
+<meta property="og:description" content="夜の女王への成り上がりタップゲーム。場末のスナックから総理大臣へ。12ステージを駆け上がれ。"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://paul13131313.github.io/night-queen/"/>
+<meta property="og:image" content="https://paul13131313.github.io/night-queen/ogp.svg"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta property="og:site_name" content="NIGHT QUEEN"/>
+<meta property="og:locale" content="ja_JP"/>
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="NIGHT QUEEN"/>
+<meta name="twitter:description" content="夜の女王への成り上がりタップゲーム"/>
+<meta name="twitter:image" content="https://paul13131313.github.io/night-queen/ogp.svg"/>
+<!-- Icons -->
+<link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+<link rel="apple-touch-icon" href="apple-touch-icon.svg"/>
+<link rel="manifest" href="manifest.json"/>
 <style>*{margin:0;padding:0;box-sizing:border-box}body{background:#0d0d1a;overflow-x:hidden;-webkit-tap-highlight-color:transparent}</style>
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -192,25 +211,40 @@ const CONVOS=[
 const Character = ({stageData, done, glamour}) => {
   const s = stageData;
   const has = (id) => done.has(id);
-  // Surgery effects
+  // Surgery effects — dramatically amplified
   const bigE = has("s01")||has("s09"), hugeE = has("s09"), lush = has("s02");
   const slimN = has("s05"), slimJ = has("s07")||has("s10"), tinyJ = has("s10");
   const glow = has("s04")||has("s12")||has("s14"), full = has("s13")||has("s14");
-  const teeth = has("s08"), lifted = has("s12");
-  const eS = hugeE ? 1.2 : bigE ? 1.1 : 1;
-  const jw = tinyJ ? 14.5 : slimJ ? 15.5 : 17;
+  const teeth = has("s08"), lifted = has("s12"), botox = has("s03");
+  const chest = has("s11");
+  // Dramatically different scales
+  const eS = hugeE ? 1.5 : bigE ? 1.25 : 1;
+  const jw = tinyJ ? 13 : slimJ ? 14.5 : 17;
+  // Lip fullness
+  const lipScale = lush ? 1.6 : 1;
+  // Nose narrowness
+  const noseW = slimN ? 0.4 : 0.8;
+  // Count total surgeries for progressive beauty
+  const surgCount = [...done].filter(id => id.startsWith("s")).length;
+  const beautyLevel = Math.min(surgCount / 14, 1); // 0 to 1
 
   const ac = s.accent || "#fbbf24";
-  // Colors
-  const skin = glow ? "#fce8d8" : "#f5dcc8";
-  const skinS = glow ? "#f0d4c0" : "#e8c8b0";
-  const hc = "#dbb050"; // blonde base
-  const hcS = "#c89830"; // blonde shadow
-  const hcH = "#f0d878"; // blonde highlight
-  const eyeC = "#c03030"; // red-brown iris
-  const blush = "#f0a0a0";
-  const oc = s.id >= 3 ? "#1a1a2e" : (s.id >= 2 ? "#2a1540" : "#222"); // outfit dark
-  const ocH = s.id >= 3 ? "#2a2a44" : "#3a2555"; // outfit highlight
+  // Colors — skin gets progressively more luminous
+  const skin = full ? "#fff0ea" : glow ? "#fce4d6" : botox ? "#f8e0d0" : "#f0d0b8";
+  const skinS = full ? "#f5ddd0" : glow ? "#ecc8b0" : botox ? "#e8c4a8" : "#dbb898";
+  const hc = "#dbb050";
+  const hcS = "#c89830";
+  const hcH = "#f0d878";
+  // Eye color gets more vivid with surgery
+  const eyeC = hugeE ? "#d02040" : bigE ? "#c82838" : "#b04040";
+  const eyeInner = hugeE ? "#801020" : bigE ? "#701828" : "#602020";
+  // Blush gets more prominent with beauty
+  const blush = full ? "#ff9090" : glow ? "#f09898" : "#e8a8a8";
+  const blushOp = full ? 0.45 : glow ? 0.35 : 0.2;
+  // Eyelash thickness scales
+  const lashW = hugeE ? 2.8 : bigE ? 2.2 : 1.5;
+  const oc = s.id >= 3 ? "#1a1a2e" : (s.id >= 2 ? "#2a1540" : "#222");
+  const ocH = s.id >= 3 ? "#2a2a44" : "#3a2555";
 
   const renderHairBack = () => {
     switch(s.hair) {
@@ -492,54 +526,81 @@ const Character = ({stageData, done, glamour}) => {
 
       {/* HEAD */}
       <ellipse cx="50" cy="30" rx={jw} ry="18" fill={skin}/>
+      {/* Jaw contour — sharper with surgery */}
+      {slimJ && <ellipse cx="50" cy="36" rx={jw-1} ry="10" fill={skin}/>}
       {/* Face shadow */}
-      <ellipse cx="50" cy="34" rx={jw-2} ry="8" fill={skinS} opacity="0.15"/>
+      <ellipse cx="50" cy="34" rx={jw-2} ry="8" fill={skinS} opacity={lifted ? "0.08" : "0.18"}/>
+      {/* Lifted face highlight */}
+      {lifted && <ellipse cx="50" cy="26" rx={jw-4} ry="8" fill="#fff" opacity="0.08"/>}
+      {/* Glow aura */}
+      {glow && <ellipse cx="50" cy="30" rx={jw+2} ry="20" fill={ac} opacity="0.04"/>}
+      {full && <ellipse cx="50" cy="30" rx={jw+4} ry="22" fill="#ffd7001a" opacity="0.06"/>}
 
-      {/* EYES */}
+      {/* EYES — dramatically different sizes */}
       {/* Left eye */}
-      <ellipse cx="42" cy="30" rx={4*eS} ry={4.5*eS} fill="#fff"/>
-      <ellipse cx="42" cy="31" rx={3*eS} ry={3.5*eS} fill={eyeC}/>
-      <ellipse cx="42" cy="32" rx={2.2*eS} ry={2.5*eS} fill="#601818"/>
-      <circle cx="41" cy="29.5" r={1.2*eS} fill="#fff"/>
-      <circle cx="43.5" cy="31" r={0.6*eS} fill="#fff" opacity="0.7"/>
-      {/* Upper lid */}
-      <path d={`M${42-4.5*eS},29 Q42,${25-eS*2} ${42+4.5*eS},29`} fill="none" stroke="#2a1818" strokeWidth="1.8" strokeLinecap="round"/>
-      {/* Lower lash */}
-      <path d={`M${42-3*eS},34 Q42,${35.5+eS*0.5} ${42+3*eS},34`} fill="none" stroke="#2a1818" strokeWidth="0.5" opacity="0.3"/>
-      {/* Lashes */}
-      <line x1={42-4.5*eS} y1="28.5" x2={42-6*eS} y2="26" stroke="#2a1818" strokeWidth="1.2" strokeLinecap="round"/>
-      <line x1={42-3*eS} y1="27" x2={42-4*eS} y2="24.5" stroke="#2a1818" strokeWidth="1" strokeLinecap="round"/>
+      <ellipse cx="42" cy="30" rx={4*eS} ry={4.8*eS} fill="#fff"/>
+      {hugeE && <ellipse cx="42" cy="30" rx={4*eS+0.5} ry={4.8*eS+0.3} fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.3"/>}
+      <ellipse cx="42" cy="31" rx={3.2*eS} ry={3.8*eS} fill={eyeC}/>
+      <ellipse cx="42" cy="32" rx={2.4*eS} ry={2.8*eS} fill={eyeInner}/>
+      {/* Bigger, more sparkly highlights */}
+      <circle cx={40.5} cy={29} r={1.5*eS} fill="#fff"/>
+      <circle cx={43.5} cy={30.5} r={0.8*eS} fill="#fff" opacity="0.8"/>
+      {hugeE && <circle cx={41.5} cy={31.5} r={0.5} fill="#fff" opacity="0.5"/>}
+      {/* Upper lid — thicker with surgery */}
+      <path d={`M${42-5*eS},29 Q42,${24-eS*3} ${42+5*eS},29`} fill="none" stroke="#1a0808" strokeWidth={lashW} strokeLinecap="round"/>
+      {/* Lower lash line */}
+      <path d={`M${42-3.5*eS},34.5 Q42,${36+eS} ${42+3.5*eS},34.5`} fill="none" stroke="#2a1818" strokeWidth={bigE ? "0.8" : "0.4"} opacity="0.3"/>
+      {/* Lashes — longer and more dramatic */}
+      <line x1={42-5*eS} y1="28" x2={42-7*eS} y2={hugeE?"24":"25.5"} stroke="#1a0808" strokeWidth={lashW*0.7} strokeLinecap="round"/>
+      <line x1={42-3.5*eS} y1="26.5" x2={42-5*eS} y2={hugeE?"23":"24"} stroke="#1a0808" strokeWidth={lashW*0.6} strokeLinecap="round"/>
+      {bigE && <line x1={42-2*eS} y1="26" x2={42-2.5*eS} y2="23.5" stroke="#1a0808" strokeWidth={lashW*0.5} strokeLinecap="round"/>}
+      {hugeE && <line x1={42+3*eS} y1="27" x2={42+4.5*eS} y2="25" stroke="#1a0808" strokeWidth={lashW*0.5} strokeLinecap="round"/>}
 
       {/* Right eye */}
-      <ellipse cx="58" cy="30" rx={4*eS} ry={4.5*eS} fill="#fff"/>
-      <ellipse cx="58" cy="31" rx={3*eS} ry={3.5*eS} fill={eyeC}/>
-      <ellipse cx="58" cy="32" rx={2.2*eS} ry={2.5*eS} fill="#601818"/>
-      <circle cx="57" cy="29.5" r={1.2*eS} fill="#fff"/>
-      <circle cx="59.5" cy="31" r={0.6*eS} fill="#fff" opacity="0.7"/>
-      <path d={`M${58-4.5*eS},29 Q58,${25-eS*2} ${58+4.5*eS},29`} fill="none" stroke="#2a1818" strokeWidth="1.8" strokeLinecap="round"/>
-      <path d={`M${58-3*eS},34 Q58,${35.5+eS*0.5} ${58+3*eS},34`} fill="none" stroke="#2a1818" strokeWidth="0.5" opacity="0.3"/>
-      <line x1={58+4.5*eS} y1="28.5" x2={58+6*eS} y2="26" stroke="#2a1818" strokeWidth="1.2" strokeLinecap="round"/>
-      <line x1={58+3*eS} y1="27" x2={58+4*eS} y2="24.5" stroke="#2a1818" strokeWidth="1" strokeLinecap="round"/>
+      <ellipse cx="58" cy="30" rx={4*eS} ry={4.8*eS} fill="#fff"/>
+      {hugeE && <ellipse cx="58" cy="30" rx={4*eS+0.5} ry={4.8*eS+0.3} fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.3"/>}
+      <ellipse cx="58" cy="31" rx={3.2*eS} ry={3.8*eS} fill={eyeC}/>
+      <ellipse cx="58" cy="32" rx={2.4*eS} ry={2.8*eS} fill={eyeInner}/>
+      <circle cx={56.5} cy={29} r={1.5*eS} fill="#fff"/>
+      <circle cx={59.5} cy={30.5} r={0.8*eS} fill="#fff" opacity="0.8"/>
+      {hugeE && <circle cx={57.5} cy={31.5} r={0.5} fill="#fff" opacity="0.5"/>}
+      <path d={`M${58-5*eS},29 Q58,${24-eS*3} ${58+5*eS},29`} fill="none" stroke="#1a0808" strokeWidth={lashW} strokeLinecap="round"/>
+      <path d={`M${58-3.5*eS},34.5 Q58,${36+eS} ${58+3.5*eS},34.5`} fill="none" stroke="#2a1818" strokeWidth={bigE ? "0.8" : "0.4"} opacity="0.3"/>
+      <line x1={58+5*eS} y1="28" x2={58+7*eS} y2={hugeE?"24":"25.5"} stroke="#1a0808" strokeWidth={lashW*0.7} strokeLinecap="round"/>
+      <line x1={58+3.5*eS} y1="26.5" x2={58+5*eS} y2={hugeE?"23":"24"} stroke="#1a0808" strokeWidth={lashW*0.6} strokeLinecap="round"/>
+      {bigE && <line x1={58+2*eS} y1="26" x2={58+2.5*eS} y2="23.5" stroke="#1a0808" strokeWidth={lashW*0.5} strokeLinecap="round"/>}
+      {hugeE && <line x1={58-3*eS} y1="27" x2={58-4.5*eS} y2="25" stroke="#1a0808" strokeWidth={lashW*0.5} strokeLinecap="round"/>}
 
-      {/* Blush */}
-      <ellipse cx="38" cy="35" rx="4" ry="2.5" fill={blush} opacity="0.25"/>
-      <ellipse cx="62" cy="35" rx="4" ry="2.5" fill={blush} opacity="0.25"/>
+      {/* Blush — bigger and more vivid with beauty */}
+      <ellipse cx="37" cy="35" rx={4+beautyLevel*2} ry={2.5+beautyLevel} fill={blush} opacity={blushOp}/>
+      <ellipse cx="63" cy="35" rx={4+beautyLevel*2} ry={2.5+beautyLevel} fill={blush} opacity={blushOp}/>
 
-      {/* Eyebrows */}
-      <path d={`M${42-5*eS},24 Q42,${21.5-eS} ${42+4*eS},24.5`} fill="none" stroke={hcS} strokeWidth="0.8" strokeLinecap="round"/>
-      <path d={`M${58-4*eS},24.5 Q58,${21.5-eS} ${58+5*eS},24`} fill="none" stroke={hcS} strokeWidth="0.8" strokeLinecap="round"/>
+      {/* Eyebrows — more arched and defined */}
+      <path d={`M${42-5.5*eS},${botox?23:24} Q42,${botox?19:21.5-eS} ${42+4.5*eS},${botox?23.5:24.5}`} fill="none" stroke={hcS} strokeWidth={botox?"1.1":"0.8"} strokeLinecap="round"/>
+      <path d={`M${58-4.5*eS},${botox?23.5:24.5} Q58,${botox?19:21.5-eS} ${58+5.5*eS},${botox?23:24}`} fill="none" stroke={hcS} strokeWidth={botox?"1.1":"0.8"} strokeLinecap="round"/>
 
-      {/* Nose */}
-      <path d={`M50,34 L${slimN?49.5:49},38`} fill="none" stroke="#c8a898" strokeWidth="0.8" strokeLinecap="round"/>
+      {/* Nose — dramatically slimmer */}
+      <path d={`M50,33 L${50-noseW},38`} fill="none" stroke={slimN?"#e0c0b0":"#c0a090"} strokeWidth={slimN?"0.5":"0.9"} strokeLinecap="round"/>
+      {slimN && <path d="M48.5,38 Q50,39 51.5,38" fill="none" stroke="#e0c0b0" strokeWidth="0.4" opacity="0.5"/>}
+      {!slimN && <path d="M47.5,38 Q50,39.5 52.5,38" fill="none" stroke="#c0a090" strokeWidth="0.5" opacity="0.4"/>}
 
-      {/* Mouth */}
+      {/* Mouth — plump lips vs thin */}
       {lush ? (<g>
-        <path d="M46,41 Q50,39.5 54,41" fill="none" stroke="#c08080" strokeWidth="0.8"/>
-        <path d="M46,41 Q50,44 54,41" fill="#d88888" opacity="0.6"/>
+        {/* Upper lip — cupid's bow */}
+        <path d={`M${50-5*lipScale},41 Q${50-2*lipScale},${39.5-lipScale} 50,${40-lipScale*0.5} Q${50+2*lipScale},${39.5-lipScale} ${50+5*lipScale},41`} fill="#e06070" opacity="0.7"/>
+        {/* Lower lip — full and pouty */}
+        <path d={`M${50-5*lipScale},41 Q50,${41+4*lipScale} ${50+5*lipScale},41`} fill="#d85868" opacity="0.65"/>
+        {/* Lip shine */}
+        <ellipse cx="50" cy={40.5-lipScale*0.3} rx={2*lipScale} ry={0.8*lipScale} fill="#fff" opacity="0.2"/>
+        {/* Lip outline */}
+        <path d={`M${50-5*lipScale},41 Q${50-2*lipScale},${39.5-lipScale} 50,${40-lipScale*0.5} Q${50+2*lipScale},${39.5-lipScale} ${50+5*lipScale},41`} fill="none" stroke="#c05060" strokeWidth="0.4"/>
+        <path d={`M${50-5*lipScale},41 Q50,${41+4*lipScale} ${50+5*lipScale},41`} fill="none" stroke="#c05060" strokeWidth="0.4"/>
       </g>) : (<g>
-        <path d="M47,41 Q50,40 53,41" fill="none" stroke="#c08080" strokeWidth="0.7"/>
-        <path d="M48,41 Q50,42.5 52,41" fill="#d08888" opacity="0.4"/>
+        <path d="M47,41 Q50,40 53,41" fill="none" stroke="#b88080" strokeWidth="0.6"/>
+        <path d="M47.5,41 Q50,42.5 52.5,41" fill="#c09090" opacity="0.35"/>
       </g>)}
+      {/* White teeth flash */}
+      {teeth && <path d="M48,41 Q50,41.8 52,41" fill="#fff" opacity="0.3"/>}
 
       {/* Bangs overlay */}
       {renderBangs()}
@@ -560,12 +621,27 @@ const Character = ({stageData, done, glamour}) => {
         {s.id >= 6 && <circle cx="50" cy="47" r="1.5" fill={ac} opacity="0.4"/>}
       </g>)}
 
-      {/* Sparkle for glamour */}
-      {glamour > 60 && <text x="78" y="18" fontSize="5" fill={ac} opacity="0.4">✧</text>}
-      {full && <g opacity="0.35">
-        <text x="12" y="22" fontSize="4" fill={ac}>✦</text>
-        <text x="82" y="44" fontSize="3" fill={ac}>✧</text>
+      {/* Body enhancement — chest */}
+      {chest && <g>
+        <ellipse cx="44" cy="56" rx="5" ry="3" fill={skin} opacity="0.3"/>
+        <ellipse cx="56" cy="56" rx="5" ry="3" fill={skin} opacity="0.3"/>
       </g>}
+
+      {/* Sparkle for glamour — scales with beauty */}
+      {glamour > 30 && <text x="78" y="18" fontSize={4+beautyLevel*3} fill={ac} opacity={0.3+beautyLevel*0.3}>✧</text>}
+      {glamour > 50 && <text x="16" y="22" fontSize={3+beautyLevel*2} fill={ac} opacity={0.2+beautyLevel*0.2}>✦</text>}
+      {glamour > 70 && <g>
+        <text x="80" y="42" fontSize="3" fill={ac} opacity="0.3">✧</text>
+        <text x="12" y="50" fontSize="2.5" fill={ac} opacity="0.25">✦</text>
+      </g>}
+      {full && <g opacity="0.5">
+        <text x="8" y="16" fontSize="5" fill="#ffd700">✦</text>
+        <text x="84" y="34" fontSize="4" fill="#ffd700">✧</text>
+        <text x="20" y="68" fontSize="3" fill="#ffd700">✦</text>
+        <text x="76" y="60" fontSize="3.5" fill="#ffd700">✧</text>
+      </g>}
+      {/* Skin glow overlay */}
+      {glow && <ellipse cx="50" cy="50" rx="30" ry="45" fill="#fff" opacity="0.03"/>}
     </svg>
   );
 };

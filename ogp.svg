@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#080005"/>
+<stop offset="50%" stop-color="#180510"/>
+<stop offset="100%" stop-color="#0a0208"/>
+</linearGradient>
+</defs>
+<rect width="1200" height="630" fill="url(#bg)"/>
+<circle cx="200" cy="100" r="80" fill="#fbbf24" opacity="0.03"/>
+<circle cx="1000" cy="500" r="120" fill="#fbbf24" opacity="0.03"/>
+<text x="600" y="240" text-anchor="middle" font-size="96" fill="#fbbf24">👑</text>
+<text x="600" y="350" text-anchor="middle" font-family="sans-serif" font-weight="900" font-size="72" fill="#fbbf24" letter-spacing="12">NIGHT QUEEN</text>
+<text x="600" y="420" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#666" letter-spacing="6">夜の道を、極めろ。</text>
+<text x="600" y="500" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#444">場末のスナック → 銀座 → メディア → 政界 │ 12ステージ成り上がりタップゲーム</text>
+</svg>

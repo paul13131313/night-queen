@@ -1,0 +1,16 @@
+{
+  "name": "NIGHT QUEEN",
+  "short_name": "NIGHT QUEEN",
+  "description": "夜の女王への成り上がりタップゲーム",
+  "start_url": "/night-queen/",
+  "display": "standalone",
+  "background_color": "#0d0d1a",
+  "theme_color": "#0d0d1a",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
